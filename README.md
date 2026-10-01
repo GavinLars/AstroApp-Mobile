@@ -8,9 +8,11 @@ first setup.
 Sky Tonight shows the portions of astronomical night when the Moon is also
 below the horizon. Target picks use the saved observing site, selected gear,
 target size, and Moon conditions. Framing places the selected target inside a
-camera-shaped view calculated from the chosen sensor and focal length. Twelve
-targets have bundled photo references; other objects use a type-based
-illustration. My Gear has dropdown catalogs of 100 cameras and 100 optics.
+camera view calculated from the selected sensor and focal length. Switch
+between a target-detail view and the full sensor field; the teal frame changes
+with the camera and lens. Twelve targets have bundled photo references; other
+objects use a type-based illustration. My Gear has dropdown catalogs of 100
+cameras and 100 optics.
 The catalog pickers open with no gear selected, and each person adds their own
 equipment from the list or manually.
 

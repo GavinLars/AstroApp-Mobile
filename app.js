@@ -41,7 +41,8 @@ const state = {
   defaults: { cameras: [], lenses: [] },
   prefs: { site: { name: "Set observing site", lat: 0, lon: 0 }, cameras: [], lenses: [] },
   siteConfigured: false,
-  targets: [], stars: [], cameraCatalog: [], lensCatalog: [], targetImages: {}, selectedTarget: null, night: null,
+  targets: [], stars: [], cameraCatalog: [], lensCatalog: [], targetImages: {}, targetImageCache: {}, selectedTarget: null, night: null,
+  framePreviewMode: "detail",
   mapArea: "world", mapZoom: 1, mapPanX: 0, mapPanY: 0, mapImage: null,
   mapTransform: null, mapPointers: new Map(), mapMoved: false, mapLast: null, mapPinch: null,
   mapAtlas: null, mapAtlasPromise: null, mapAtlasFailed: false, mapTiles: new Map(), mapSampleId: 0,
@@ -1055,6 +1056,15 @@ function colorForStar(colorIndex) {
   return `rgb(${red},${green},${blue})`;
 }
 
+function getTargetImage(src) {
+  if (state.targetImageCache[src]) return state.targetImageCache[src];
+  const image = new Image();
+  state.targetImageCache[src] = image;
+  image.onload = () => drawFraming();
+  image.src = src;
+  return image;
+}
+
 function targetVisualSeed(name) {
   let seed = 2166136261;
   for (const char of name) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
@@ -1128,19 +1138,27 @@ function drawFraming() {
   const focal = finite($("frameFocal").value, 0);
   if (!target || !camera || focal <= 0) {
     ctx.fillStyle = "#9eb0bd"; ctx.font = "13px -apple-system, sans-serif"; ctx.textAlign = "center";
+    $("frameModeHint").textContent = !camera ? "Add a camera and lens in My Gear to draw the sensor field." : "Choose a target to see its framing.";
+    $("framingVisualLabel").textContent = target ? `${target.type} preview` : "Object preview";
     ctx.fillText(!camera ? "Add a camera in My Gear to see framing" : "Choose a target and focal length", w / 2, h / 2); return;
   }
   const fovX = fieldOfView(camera.sensor_width, focal), fovY = fieldOfView(camera.sensor_height, focal);
-  const margin = 16, scale = Math.min((w - margin * 2) / fovX, (h - margin * 2) / fovY);
+  const margin = 16, plot = { x: margin, y: margin, width: w - margin * 2, height: h - margin * 2 };
+  const targetWidth = Math.max(.01, finite(target.size_deg?.[0], .2));
+  const targetHeight = Math.max(.01, finite(target.size_deg?.[1], .2));
+  const scale = state.framePreviewMode === "detail"
+    ? Math.min(plot.width * .42 / targetWidth, plot.height * .42 / targetHeight)
+    : Math.min(plot.width / (fovX * 1.5), plot.height / (fovY * 1.5));
+  const sceneFovX = plot.width / scale, sceneFovY = plot.height / scale;
   const frameW = fovX * scale, frameH = fovY * scale;
   const centerX = w / 2, centerY = h / 2, rotation = radians(finite($("frameRotation").value, 0));
   const frame = { x: centerX - frameW / 2, y: centerY - frameH / 2, width: frameW, height: frameH };
-  ctx.fillStyle = "#02070d"; ctx.fillRect(frame.x, frame.y, frame.width, frame.height);
-  ctx.save(); ctx.beginPath(); ctx.rect(frame.x, frame.y, frame.width, frame.height); ctx.clip();
+  ctx.fillStyle = "#02070d"; ctx.fillRect(plot.x, plot.y, plot.width, plot.height);
+  ctx.save(); ctx.beginPath(); ctx.rect(plot.x, plot.y, plot.width, plot.height); ctx.clip();
   ctx.strokeStyle = "rgba(128,224,210,.12)"; ctx.lineWidth = 1;
   for (let i = 1; i < 4; i++) {
-    ctx.beginPath(); ctx.moveTo(frame.x + frame.width * i / 4, frame.y); ctx.lineTo(frame.x + frame.width * i / 4, frame.y + frame.height); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(frame.x, frame.y + frame.height * i / 4); ctx.lineTo(frame.x + frame.width, frame.y + frame.height * i / 4); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(plot.x + plot.width * i / 4, plot.y); ctx.lineTo(plot.x + plot.width * i / 4, plot.y + plot.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(plot.x, plot.y + plot.height * i / 4); ctx.lineTo(plot.x + plot.width, plot.y + plot.height * i / 4); ctx.stroke();
   }
   ctx.translate(centerX, centerY); ctx.rotate(-rotation); ctx.translate(-centerX, -centerY);
   const ra0 = radians(target.ra), dec0 = radians(target.dec);
@@ -1151,32 +1169,47 @@ function drawFraming() {
     const tangentX = Math.cos(dec) * Math.sin(dra) / cosc;
     const tangentY = (Math.cos(dec0) * Math.sin(dec) - Math.sin(dec0) * Math.cos(dec) * Math.cos(dra)) / cosc;
     const sx = degrees(tangentX), sy = degrees(tangentY);
-    if (Math.abs(sx) > fovX * .65 || Math.abs(sy) > fovY * .65) continue;
+    if (Math.abs(sx) > sceneFovX * .55 || Math.abs(sy) > sceneFovY * .55) continue;
     const px = centerX + sx * scale, py = centerY - sy * scale;
     const mag = finite(star[3], 6.5), radius = clamp(2.1 - (mag + .5) * .24, .55, 2.1);
     ctx.beginPath(); ctx.fillStyle = colorForStar(star[4]); ctx.globalAlpha = clamp(1.15 - mag / 9, .35, .92);
     ctx.arc(px, py, radius, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  const width = Math.max(6, finite(target.size_deg?.[0], .2) * scale);
-  const height = Math.max(6, finite(target.size_deg?.[1], .2) * scale);
+  const width = Math.max(6, targetWidth * scale);
+  const height = Math.max(6, targetHeight * scale);
   const source = state.targetImages[target.name];
-  const reference = $("targetReferenceImage");
-  if (source && reference.complete && reference.naturalWidth && reference.dataset.src === source.src) {
+  const reference = source ? getTargetImage(source.src) : null;
+  if (reference?.complete && reference.naturalWidth) {
     const imageAspect = reference.naturalWidth / reference.naturalHeight;
     const boxAspect = width / height;
     let imageWidth = width, imageHeight = height;
-    if (imageAspect > boxAspect) imageWidth = height * imageAspect;
-    else imageHeight = width / imageAspect;
+    if (imageAspect > boxAspect) imageHeight = width / imageAspect;
+    else imageWidth = height * imageAspect;
     ctx.globalCompositeOperation = "screen";
     ctx.drawImage(reference, centerX - imageWidth / 2, centerY - imageHeight / 2, imageWidth, imageHeight);
     ctx.globalCompositeOperation = "source-over";
   } else drawCatalogTarget(ctx, target, width, height);
   ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(plot.x, plot.y, plot.width, plot.height); ctx.clip();
   ctx.strokeStyle = "#80e0d2"; ctx.lineWidth = 2;
+  ctx.setLineDash(state.framePreviewMode === "detail" ? [6, 4] : []);
   ctx.strokeRect(frame.x, frame.y, frame.width, frame.height);
+  const sensorFits = frame.width <= plot.width && frame.height <= plot.height;
+  if (!sensorFits && state.framePreviewMode === "detail") {
+    ctx.setLineDash([2, 5]); ctx.lineWidth = 1.5;
+    ctx.strokeRect(plot.x, plot.y, plot.width, plot.height);
+  }
+  ctx.setLineDash([]); ctx.restore();
   ctx.fillStyle = "#9eb0bd"; ctx.font = "10px -apple-system, sans-serif"; ctx.textAlign = "center";
-  ctx.fillText("CAMERA VIEW", centerX, Math.max(12, frame.y - 5));
+  ctx.fillText(state.framePreviewMode === "detail" ? "TARGET DETAIL" : "1.5× CAMERA FIELD", centerX, Math.max(12, plot.y - 5));
+  $("frameModeHint").textContent = state.framePreviewMode === "camera"
+    ? "Full sensor field · target and stars are shown at catalog scale."
+    : sensorFits ? "Target detail · dashed teal box shows the complete camera field."
+      : "Target detail · camera field extends beyond this zoomed view.";
+  $("framingVisualLabel").textContent = source
+    ? (source.caption || `${target.name} reference image`)
+    : `${target.type} illustration · target detail`;
 }
 
 function updateFraming() {
@@ -1192,6 +1225,7 @@ function updateFraming() {
   const image = target ? state.targetImages[target.name] : null;
   $("targetImageCard").hidden = !image;
   if (image) {
+    getTargetImage(image.src);
     const reference = $("targetReferenceImage");
     if (reference.dataset.src !== image.src) {
       reference.dataset.src = image.src;
@@ -1202,6 +1236,14 @@ function updateFraming() {
     $("targetImageName").textContent = image.caption || `${target.name} · reference view`;
     $("targetImageCredit").textContent = image.credit || "NASA image credit is listed in AstroApp attributions.";
   }
+  drawFraming();
+}
+
+function setFramePreviewMode(mode) {
+  if (mode !== "detail" && mode !== "camera") return;
+  state.framePreviewMode = mode;
+  $("frameTargetMode").setAttribute("aria-pressed", String(mode === "detail"));
+  $("frameCameraMode").setAttribute("aria-pressed", String(mode === "camera"));
   drawFraming();
 }
 
@@ -1436,6 +1478,8 @@ function bindEvents() {
   });
   setupMapPointerEvents();
   $("frameTargetSelect").addEventListener("change", (event) => { selectTarget(event.currentTarget.value); renderSky(); });
+  $("frameTargetMode").addEventListener("click", () => setFramePreviewMode("detail"));
+  $("frameCameraMode").addEventListener("click", () => setFramePreviewMode("camera"));
   $("frameCamera").addEventListener("change", () => { updateFraming(); renderSky(); });
   $("frameLens").addEventListener("change", () => {
     const lens = state.prefs.lenses[Number($("frameLens").value)];

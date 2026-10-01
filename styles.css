@@ -156,6 +156,10 @@ h2 { margin-bottom: 0; font-size: 1.03rem; line-height: 1.25; font-weight: 620; 
 .field input, .field select { width: 100%; min-width: 0; min-height: 41px; padding: 0 10px; border: 1px solid var(--line); border-radius: 11px; background: #0b1926; color: var(--text); font-size: .78rem; }
 .field input[type="range"] { min-height: 24px; padding: 0; border: 0; background: transparent; accent-color: var(--teal); }
 .framing-controls { padding: 12px; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,255,255,.025); }
+.framing-preview-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0 0; }
+.framing-preview-modes button { min-width: 0; padding: 0 8px; color: var(--muted); font-size: .74rem; }
+.framing-preview-modes button[aria-pressed="true"] { border-color: rgba(128,224,210,.55); background: rgba(128,224,210,.13); color: var(--teal); }
+.framing-mode-hint { margin-top: 6px; }
 .range-value { float: right; color: var(--teal); }
 .framing-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
 .framing-stats > div { padding: 11px 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.035); }

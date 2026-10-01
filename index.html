@@ -125,16 +125,21 @@
         <div class="section-title"><div><p class="eyebrow">TONIGHT · YOUR GEAR · YOUR LOCATION</p><h2>Recommended targets</h2></div><span class="muted" id="framingTargetCount"></span></div>
         <p class="small-note" id="framingRecommendationContext"></p>
         <div class="target-list" id="framingTargets" aria-live="polite"></div>
+        <div class="framing-preview-modes" role="group" aria-label="Framing preview view">
+          <button class="button" id="frameTargetMode" type="button" aria-pressed="true">Target detail</button>
+          <button class="button" id="frameCameraMode" type="button" aria-pressed="false">Full camera field</button>
+        </div>
+        <p class="small-note framing-mode-hint" id="frameModeHint">Target detail with the selected camera field overlaid.</p>
         <article class="card chart-card">
           <canvas id="framingChart" aria-label="Offline camera view with the selected deep-sky target and sensor frame"></canvas>
-          <div class="chart-caption"><span id="chartTargetName">Target center</span><span>Camera field</span></div>
+          <div class="chart-caption"><span id="chartTargetName">Target center</span><span id="framingVisualLabel">Object preview</span></div>
         </article>
         <details class="card reference-card" id="targetImageCard" hidden>
           <summary>Open full reference image and credit</summary>
           <img id="targetReferenceImage" alt="">
           <div class="reference-caption"><strong id="targetImageName"></strong><span id="targetImageCredit"></span></div>
         </details>
-        <p class="small-note">The teal rectangle matches your camera’s calculated field of view. Bundled target photos appear inside it using catalog size; other targets use an illustration. Tiny objects are enlarged for visibility, and photo crops vary, so treat the preview as an estimate of composition.</p>
+        <p class="small-note">Target detail zooms in on the object; the teal sensor frame changes with your camera and lens. Choose Full camera field to see the entire sensor view with a little surrounding sky. Twelve targets have offline reference photos; other objects use type-based illustrations. Reference crops vary, so treat the preview as an estimate of composition.</p>
       </section>
 
       <section class="screen" id="screen-gear" aria-labelledby="gearHeading" hidden>
