@@ -1,9 +1,16 @@
 "use strict";
 
 const STORAGE_KEY = "astroapp.mobile.preferences.v1";
+const FIELD_STORAGE_KEY = "astroapp.mobile.field-kit.v1";
 const ATLAS_DETAIL_URL = "./assets/light-pollution-atlas-2025-detail.bin";
 const MAP_MAX_ZOOM = { world: 256, "north-america": 256 };
 const MAP_TILE_CACHE_LIMIT = 32;
+const TRACKER_DRIFT = { rough: 15, good: 5, excellent: 1 };
+const DEFAULT_PACKING_ITEMS = [
+  "Camera and lens", "Tripod / mount", "Star tracker", "Counterweights", "Intervalometer",
+  "Memory cards", "Spare batteries", "Power bank", "Dew heater", "Red headlamp",
+  "Filters", "Cables and adapters", "Finder / guide scope", "Warm layers",
+];
 const $ = (id) => document.getElementById(id);
 const dom = {
   status: $("offlineStatus"), statusText: $("offlineStatusText"), toast: $("toast"),
@@ -38,6 +45,8 @@ const state = {
   mapArea: "world", mapZoom: 1, mapPanX: 0, mapPanY: 0, mapImage: null,
   mapTransform: null, mapPointers: new Map(), mapMoved: false, mapLast: null, mapPinch: null,
   mapAtlas: null, mapAtlasPromise: null, mapAtlasFailed: false, mapTiles: new Map(), mapSampleId: 0,
+  fieldSession: { target: "", exposure: 60, lights: 0, darks: 0, flats: 0, bias: 0 },
+  packingItems: DEFAULT_PACKING_ITEMS.map((name) => ({ name, checked: false })),
   mapPin: null, mapNeedsFocus: false, pendingMapFocus: null, offlineReady: false, toastTimer: 0,
 };
 
@@ -81,6 +90,164 @@ function validLens(item) {
 function savePreferences() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.prefs)); }
   catch { toast("This browser could not save changes. Check available iPhone storage."); }
+}
+
+function loadFieldKit() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FIELD_STORAGE_KEY) || "null");
+    if (!stored || typeof stored !== "object") return;
+    const session = stored.session;
+    if (session && typeof session === "object") {
+      state.fieldSession = {
+        target: typeof session.target === "string" ? session.target.slice(0, 80) : "",
+        exposure: clamp(finite(session.exposure, 60), 0.1, 86400),
+        lights: clamp(Math.floor(finite(session.lights, 0)), 0, 1000000),
+        darks: clamp(Math.floor(finite(session.darks, 0)), 0, 1000000),
+        flats: clamp(Math.floor(finite(session.flats, 0)), 0, 1000000),
+        bias: clamp(Math.floor(finite(session.bias, 0)), 0, 1000000),
+      };
+    }
+    if (Array.isArray(stored.packingItems)) {
+      state.packingItems = stored.packingItems.filter((item) => item && typeof item.name === "string" && item.name.trim())
+        .slice(0, 100).map((item) => ({ name: item.name.trim().slice(0, 60), checked: Boolean(item.checked) }));
+    }
+  } catch { /* Use the default field kit when local storage is malformed. */ }
+}
+
+function saveFieldKit() {
+  try {
+    localStorage.setItem(FIELD_STORAGE_KEY, JSON.stringify({ session: state.fieldSession, packingItems: state.packingItems }));
+  } catch { toast("This browser could not save the field kit. Check available iPhone storage."); }
+}
+
+function populateFieldGear() {
+  const cameraSelect = $("fieldCamera"), lensSelect = $("fieldLens");
+  const previousCamera = cameraSelect.value, previousLens = lensSelect.value;
+  cameraSelect.replaceChildren(); lensSelect.replaceChildren();
+  const cameraPrompt = document.createElement("option"); cameraPrompt.value = "";
+  cameraPrompt.textContent = state.prefs.cameras.length ? "Choose camera" : "Add a camera in My Gear";
+  cameraSelect.append(cameraPrompt);
+  state.prefs.cameras.forEach((camera, index) => {
+    const option = document.createElement("option"); option.value = String(index); option.textContent = camera.name; cameraSelect.append(option);
+  });
+  const lensPrompt = document.createElement("option"); lensPrompt.value = "";
+  lensPrompt.textContent = state.prefs.lenses.length ? "Choose lens / scope" : "Add a lens in My Gear";
+  lensSelect.append(lensPrompt);
+  state.prefs.lenses.forEach((lens, index) => {
+    const option = document.createElement("option"); option.value = String(index); option.textContent = lens.name; lensSelect.append(option);
+  });
+  if (previousCamera && state.prefs.cameras[Number(previousCamera)]) cameraSelect.value = previousCamera;
+  else if (state.prefs.cameras.length) cameraSelect.value = "0";
+  if (previousLens && state.prefs.lenses[Number(previousLens)]) lensSelect.value = previousLens;
+  else if (state.prefs.lenses.length) lensSelect.value = "0";
+  const lens = lensSelect.value === "" ? null : state.prefs.lenses[Number(lensSelect.value)];
+  $("fieldFocal").value = lens ? lens.focal_length : "";
+  $("fieldFNumber").value = lens ? lens.f_ratio : "";
+  updateExposureGuide();
+}
+
+function formatExposure(seconds) {
+  if (seconds >= 3600) return `${(seconds / 3600).toFixed(1)} h`;
+  if (seconds >= 60) return `${(seconds / 60).toFixed(1)} min`;
+  return `${seconds.toFixed(1)} s`;
+}
+
+function updateExposureGuide() {
+  const cameraIndex = $("fieldCamera").value;
+  const camera = cameraIndex === "" ? null : state.prefs.cameras[Number(cameraIndex)];
+  const focal = finite($("fieldFocal").value, 0), fNumber = finite($("fieldFNumber").value, 0);
+  if (!camera || focal <= 0 || fNumber <= 0) {
+    $("fieldNpf").textContent = camera ? "Enter focal length and f-number" : "Add camera and optics in My Gear";
+    $("field500").textContent = "—"; $("fieldTracked").textContent = "—"; $("fieldImageScale").textContent = "—";
+    return;
+  }
+  const cropFactor = 36 / camera.sensor_width;
+  const npf = (35 * fNumber + 30 * camera.pixel_size_um) / focal;
+  const rule500 = 500 / (focal * cropFactor);
+  const imageScale = (camera.pixel_size_um / focal) * 206.265;
+  const quality = $("fieldAlignment").value || "good";
+  const trackedSeconds = (1.5 * imageScale / TRACKER_DRIFT[quality]) * 60;
+  $("fieldNpf").textContent = `${formatExposure(npf)} · start here`;
+  $("field500").textContent = `${formatExposure(rule500)} · generous estimate`;
+  $("fieldTracked").textContent = `${formatExposure(trackedSeconds)} max guide`;
+  $("fieldImageScale").textContent = `${imageScale.toFixed(2)} arcsec / pixel`;
+}
+
+function renderFieldSession() {
+  const session = state.fieldSession;
+  $("sessionTarget").value = session.target;
+  $("sessionExposure").value = String(session.exposure);
+  $("sessionLights").value = String(session.lights);
+  $("sessionDarks").value = String(session.darks);
+  $("sessionFlats").value = String(session.flats);
+  $("sessionBias").value = String(session.bias);
+  updateFieldSession();
+}
+
+function formatIntegration(seconds) {
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)} h ${Math.floor(seconds % 3600 / 60)} min`;
+  if (seconds >= 60) return `${Math.floor(seconds / 60)} min`;
+  return `${Math.round(seconds)} sec`;
+}
+
+function updateFieldSession() {
+  state.fieldSession.target = $("sessionTarget").value.trim().slice(0, 80);
+  state.fieldSession.exposure = clamp(finite($("sessionExposure").value, 60), 0.1, 86400);
+  $("sessionExposure").value = String(state.fieldSession.exposure);
+  for (const [key, id] of [["lights", "sessionLights"], ["darks", "sessionDarks"], ["flats", "sessionFlats"], ["bias", "sessionBias"]]) {
+    state.fieldSession[key] = clamp(Math.floor(finite($(id).value, 0)), 0, 1000000);
+    $(id).value = String(state.fieldSession[key]);
+  }
+  const total = state.fieldSession.lights * state.fieldSession.exposure;
+  $("sessionIntegration").textContent = formatIntegration(total);
+  if (state.fieldSession.lights === 0) $("sessionReminder").textContent = "Counts and target are saved on this iPhone as you update them.";
+  else {
+    const missing = [["darks", state.fieldSession.darks], ["flats", state.fieldSession.flats], ["bias frames", state.fieldSession.bias]]
+      .filter(([, count]) => count === 0).map(([name]) => name);
+    $("sessionReminder").textContent = missing.length
+      ? `Check whether your workflow needs ${missing.join(", ")}. This tracker keeps counts and integration time; it does not replace calibration planning.`
+      : "Light and calibration counts are saved on this iPhone.";
+  }
+  saveFieldKit();
+}
+
+function updatePackingStatus() {
+  const packed = state.packingItems.filter((item) => item.checked).length;
+  $("packingStatus").textContent = `${packed} / ${state.packingItems.length}`;
+}
+
+function renderPackingList() {
+  const root = $("packingChecklist"); root.replaceChildren();
+  if (!state.packingItems.length) {
+    const empty = document.createElement("p"); empty.className = "small-note"; empty.textContent = "Add the items you want to bring."; root.append(empty);
+  }
+  state.packingItems.forEach((item, index) => {
+    const row = document.createElement("div"); row.className = `packing-item${item.checked ? " checked" : ""}`;
+    const check = document.createElement("input"); check.type = "checkbox"; check.checked = item.checked;
+    check.setAttribute("aria-label", `${item.checked ? "Uncheck" : "Check"} ${item.name}`);
+    check.addEventListener("change", () => {
+      item.checked = check.checked; row.classList.toggle("checked", item.checked);
+      check.setAttribute("aria-label", `${item.checked ? "Uncheck" : "Check"} ${item.name}`);
+      updatePackingStatus(); saveFieldKit();
+    });
+    const label = document.createElement("span"); label.textContent = item.name;
+    const remove = document.createElement("button"); remove.className = "packing-remove"; remove.type = "button";
+    remove.textContent = "×"; remove.setAttribute("aria-label", `Remove ${item.name}`);
+    remove.addEventListener("click", () => { state.packingItems.splice(index, 1); renderPackingList(); saveFieldKit(); });
+    row.append(check, label, remove); root.append(row);
+  });
+  updatePackingStatus();
+}
+
+function addPackingItem() {
+  const input = $("newPackingItem"), name = input.value.trim().slice(0, 60);
+  if (!name) return;
+  if (state.packingItems.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    toast("That item is already on the list."); return;
+  }
+  if (state.packingItems.length >= 100) { toast("The packing list is full."); return; }
+  state.packingItems.push({ name, checked: false }); input.value = "";
+  renderPackingList(); saveFieldKit();
 }
 
 function clamp(value, low, high) { return Math.min(high, Math.max(low, value)); }
@@ -701,6 +868,7 @@ function populateGear() {
   renderGearList("cameraList", cameras, "camera"); renderGearList("lensList", lenses, "lens");
   if (lenses.length && !$('frameFocal').value) $("frameFocal").value = lenses[0].focal_length;
   updateFraming();
+  populateFieldGear();
 }
 
 function renderGearList(id, items, kind) {
@@ -875,8 +1043,9 @@ function addGear(kind) {
 }
 
 function downloadGear() {
-  const file = new Blob([JSON.stringify(state.prefs, null, 2)], { type: "application/json" });
-  const link = document.createElement("a"); link.href = URL.createObjectURL(file); link.download = "astroapp-gear.json";
+  const backup = { ...state.prefs, fieldKit: { session: state.fieldSession, packingItems: state.packingItems } };
+  const file = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+  const link = document.createElement("a"); link.href = URL.createObjectURL(file); link.download = "astroapp-backup.json";
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
@@ -894,9 +1063,27 @@ async function importGear(file) {
     state.prefs = { cameras: incoming.cameras.slice(0, 40), lenses: incoming.lenses.slice(0, 60), site: site ? { name: site.name.slice(0, 60), lat: Number(site.lat), lon: Number(site.lon) } : state.prefs.site };
     if (site) state.siteConfigured = Boolean(site.name.trim() && site.name !== "Set observing site");
     state.mapPin = state.siteConfigured ? state.prefs.site : null;
-    savePreferences(); updateSiteLabels(); populateGear(); renderSky(); toast("Gear file imported.");
+    if (incoming.fieldKit && typeof incoming.fieldKit === "object") {
+      const importedSession = incoming.fieldKit.session;
+      if (importedSession && typeof importedSession === "object") {
+        state.fieldSession = {
+          target: typeof importedSession.target === "string" ? importedSession.target.slice(0, 80) : "",
+          exposure: clamp(finite(importedSession.exposure, 60), 0.1, 86400),
+          lights: clamp(Math.floor(finite(importedSession.lights, 0)), 0, 1000000),
+          darks: clamp(Math.floor(finite(importedSession.darks, 0)), 0, 1000000),
+          flats: clamp(Math.floor(finite(importedSession.flats, 0)), 0, 1000000),
+          bias: clamp(Math.floor(finite(importedSession.bias, 0)), 0, 1000000),
+        };
+      }
+      if (Array.isArray(incoming.fieldKit.packingItems)) {
+        state.packingItems = incoming.fieldKit.packingItems.filter((item) => item && typeof item.name === "string" && item.name.trim())
+          .slice(0, 100).map((item) => ({ name: item.name.trim().slice(0, 60), checked: Boolean(item.checked) }));
+      }
+      saveFieldKit(); renderFieldSession(); renderPackingList();
+    }
+    savePreferences(); updateSiteLabels(); populateGear(); renderSky(); toast("AstroApp backup imported.");
     if (state.mapImage && state.siteConfigured) focusMapOn(state.prefs.site.lat, state.prefs.site.lon, Math.max(state.mapZoom, 1.2));
-  } catch (error) { toast(error.message || "Could not read that gear file."); }
+  } catch (error) { toast(error.message || "Could not read that AstroApp backup."); }
 }
 
 function renderOfflineStatus(text, mode = "") {
@@ -1032,6 +1219,30 @@ function bindEvents() {
   });
   $("frameFocal").addEventListener("input", updateFraming);
   $("frameRotation").addEventListener("input", updateFraming);
+  $("fieldCamera").addEventListener("change", updateExposureGuide);
+  $("fieldLens").addEventListener("change", () => {
+    const lensIndex = $("fieldLens").value;
+    const lens = lensIndex === "" ? null : state.prefs.lenses[Number(lensIndex)];
+    if (lens) { $("fieldFocal").value = lens.focal_length; $("fieldFNumber").value = lens.f_ratio; }
+    updateExposureGuide();
+  });
+  $("fieldFocal").addEventListener("input", updateExposureGuide);
+  $("fieldFNumber").addEventListener("input", updateExposureGuide);
+  $("fieldAlignment").addEventListener("change", updateExposureGuide);
+  for (const id of ["sessionTarget", "sessionExposure", "sessionLights", "sessionDarks", "sessionFlats", "sessionBias"]) {
+    $(id).addEventListener("input", updateFieldSession);
+    $(id).addEventListener("change", updateFieldSession);
+  }
+  $("resetSession").addEventListener("click", () => {
+    for (const id of ["sessionLights", "sessionDarks", "sessionFlats", "sessionBias"]) $(id).value = "0";
+    updateFieldSession(); toast("Session counts reset.");
+  });
+  $("addPackingItem").addEventListener("click", addPackingItem);
+  $("newPackingItem").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); addPackingItem(); } });
+  $("resetPacking").addEventListener("click", () => {
+    state.packingItems.forEach((item) => { item.checked = false; });
+    renderPackingList(); saveFieldKit();
+  });
   dom.targets.addEventListener("click", (event) => {
     const row = event.target.closest("[data-target]");
     if (row) { selectTarget(row.dataset.target); activateScreen("framing"); }
@@ -1084,9 +1295,10 @@ async function init() {
     toast("AstroApp could not load its bundled sky data. Reopen while online to finish setup.");
     console.error(error);
   }
+  loadFieldKit();
   updateSiteLabels();
   dom.date.value = localDateISO();
-  renderZoneLegend(); fillTargetOptions(); populateGear();
+  renderZoneLegend(); fillTargetOptions(); populateGear(); renderFieldSession(); renderPackingList();
   const initialTarget = activeTarget(); if (initialTarget) $("frameTargetSearch").value = initialTarget.name;
   renderSky(); bindEvents();
   const site = state.prefs.site;

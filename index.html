@@ -134,7 +134,7 @@
       <section class="screen" id="screen-gear" aria-labelledby="gearHeading" hidden>
         <div class="page-head">
           <div><p class="eyebrow">SAVED ON THIS IPHONE</p><h1 id="gearHeading">My gear</h1></div>
-          <button class="button button-quiet" id="gearExport" type="button">Export</button>
+          <button class="button button-quiet" id="gearExport" type="button">Export backup</button>
         </div>
         <article class="card location-card">
           <div class="section-title compact"><div><p class="eyebrow">OBSERVING SITE</p><h2>Where you shoot</h2></div><button class="text-button" id="gearUseLocation" type="button">Use GPS</button></div>
@@ -173,11 +173,61 @@
           </details>
         </article>
         <article class="card data-card">
-          <div class="section-title compact"><div><p class="eyebrow">BACKUP & MOVE</p><h2>Gear file</h2></div></div>
-          <p class="card-note">Export a JSON backup or import it on another device. Your location and gear stay in this app’s local storage.</p>
-          <label class="button button-secondary full-width import-button" for="gearImport">Import gear file</label>
+          <div class="section-title compact"><div><p class="eyebrow">BACKUP & MOVE</p><h2>AstroApp backup</h2></div></div>
+          <p class="card-note">Move your site, gear, session notes, counts, and packing list to another device with a JSON backup. This file includes your saved location.</p>
+          <label class="button button-secondary full-width import-button" for="gearImport">Import backup</label>
           <input id="gearImport" type="file" accept="application/json,.json" hidden>
         </article>
+      </section>
+
+      <section class="screen" id="screen-field" aria-labelledby="fieldHeading" hidden>
+        <div class="page-head">
+          <div><p class="eyebrow">PLAN · CAPTURE · PACK</p><h1 id="fieldHeading">Field kit</h1></div>
+        </div>
+
+        <article class="card field-card">
+          <div class="section-title compact"><div><p class="eyebrow">STAR TRAIL ESTIMATES</p><h2>Exposure guide</h2></div></div>
+          <div class="form-grid">
+            <label class="field">Camera<select id="fieldCamera"></select></label>
+            <label class="field">Lens / scope<select id="fieldLens"></select></label>
+            <label class="field">Focal length (mm)<input id="fieldFocal" type="number" inputmode="decimal" min="1" step="1"></label>
+            <label class="field">f-number<input id="fieldFNumber" type="number" inputmode="decimal" min="0.1" step="0.1"></label>
+            <label class="field span-two">Tracker polar-alignment quality
+              <select id="fieldAlignment"><option value="rough">Rough · 15″/min drift</option><option value="good" selected>Good · 5″/min drift</option><option value="excellent">Excellent · 1″/min drift</option></select>
+            </label>
+          </div>
+          <div class="field-output-grid">
+            <div class="field-output"><span class="eyebrow">NPF · TRIPOD</span><strong id="fieldNpf">Add camera and optics</strong></div>
+            <div class="field-output"><span class="eyebrow">500 RULE</span><strong id="field500">—</strong></div>
+            <div class="field-output"><span class="eyebrow">TRACKED GUIDE</span><strong id="fieldTracked">—</strong></div>
+            <div class="field-output"><span class="eyebrow">IMAGE SCALE</span><strong id="fieldImageScale">—</strong></div>
+          </div>
+          <p class="card-note">Use NPF as a starting point for an untracked camera. The tracker estimate uses your alignment selection and a 1.5-pixel blur budget; check a test frame before a long run.</p>
+        </article>
+
+        <article class="card field-card">
+          <div class="section-title compact"><div><p class="eyebrow">INTEGRATION TIME</p><h2>Session tracker</h2></div><button class="text-button" id="resetSession" type="button">Reset counts</button></div>
+          <div class="form-grid">
+            <label class="field span-two">Target / session<input id="sessionTarget" type="text" maxlength="80" placeholder="e.g. M31 · Oct 1"></label>
+            <label class="field span-two">Light exposure (seconds)<input id="sessionExposure" type="number" inputmode="decimal" min="0.1" step="1"></label>
+          </div>
+          <div class="session-counter-grid">
+            <label class="field">Lights<input id="sessionLights" type="number" inputmode="numeric" min="0" step="1"></label>
+            <label class="field">Darks<input id="sessionDarks" type="number" inputmode="numeric" min="0" step="1"></label>
+            <label class="field">Flats<input id="sessionFlats" type="number" inputmode="numeric" min="0" step="1"></label>
+            <label class="field">Bias<input id="sessionBias" type="number" inputmode="numeric" min="0" step="1"></label>
+          </div>
+          <div class="integration-result"><span>Total light integration</span><strong id="sessionIntegration">0 minutes</strong></div>
+          <p class="card-note" id="sessionReminder">Frame counts are saved on this iPhone as you update them.</p>
+        </article>
+
+        <article class="card field-card">
+          <div class="section-title compact"><div><p class="eyebrow">BEFORE YOU LEAVE</p><h2>Packing checklist</h2></div><span class="checklist-count" id="packingStatus">0 / 0</span></div>
+          <div class="checklist-add-row"><input id="newPackingItem" type="text" maxlength="60" placeholder="Add an item" aria-label="New packing-list item"><button class="button button-secondary" id="addPackingItem" type="button">Add</button></div>
+          <div class="packing-list" id="packingChecklist"></div>
+          <button class="button button-quiet full-width" id="resetPacking" type="button">Uncheck all items</button>
+        </article>
+        <p class="small-note">Field kit notes and counts are stored locally on this iPhone and work offline.</p>
       </section>
     </main>
 
@@ -190,6 +240,9 @@
       </button>
       <button class="nav-button" data-screen="framing" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4"/><circle cx="12" cy="12" r="2.6"/><path d="M12 7.5v2m0 5v2m-4.5-4.5h2m5 0h2"/></svg><span>Framing</span>
+      </button>
+      <button class="nav-button" data-screen="field" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16v12H4zM8 8V5h8v3m-8 5h8"/><path d="M12 13v3"/></svg><span>Field kit</span>
       </button>
       <button class="nav-button" data-screen="gear" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="4"/><circle cx="12" cy="12.5" r="1.6"/><path d="M7 6l1.1-2h7.8L17 6"/></svg><span>My gear</span>
@@ -205,7 +258,7 @@
       <li>Open the Home Screen app once and wait for <strong>Offline ready</strong>.</li>
       <li>Switch on Airplane Mode and reopen it to confirm your setup.</li>
     </ol>
-    <p class="card-note">Sky calculations, maps, star data, and gear are stored locally. The four tabs make no online requests during use.</p>
+    <p class="card-note">Sky calculations, maps, star data, and gear are stored locally. The five tabs make no online requests during use.</p>
     <button class="button button-primary full-width" id="doneInstall" type="button">Got it</button>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

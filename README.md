@@ -7,7 +7,8 @@ An offline-first iPhone field guide for astrophotography. This public deployment
 - **Sky Tonight** — moon phase, sunset and twilight times, a night timeline, and deep-sky targets ranked for the selected date and saved site.
 - **Light Pollution** — offline 2025 world and North America atlas tiles; both views zoom to 256× and sample the boundary-free data layer when tapped.
 - **Framing** — local star chart, target size, and camera field of view from saved camera and lens details.
-- **My Gear** — local observing site, cameras, lenses, and import/export backup.
+- **Field Kit** — NPF/500-rule and tracker exposure estimates, integration-time counter, and offline packing checklist.
+- **My Gear** — local observing site, cameras, lenses, and a backup file that carries your site and Field Kit data.
 
 Sky positions, the star catalog, target list, maps, and application code are bundled here. After the first install finishes, these tools work without an internet connection. GPS is optional; the site can be entered manually. The world map uses a 1/40° grid and North America uses 1/120°. Grid spacing describes map detail, not prediction accuracy. Atlas values estimate artificial zenith brightness, not Bortle class or measured on-site sky quality.
 
@@ -22,7 +23,7 @@ The deployed address is `https://gavinlars.github.io/AstroApp-Mobile/`.
 
 ## Publishing updates
 
-The `Deploy AstroApp Mobile` GitHub Actions workflow publishes the repository root to GitHub Pages after changes reach `main`. GitHub Pages must use **GitHub Actions** as the source in repository settings. The published app and its static files are public; the app contains no saved site or gear data.
+The `Deploy AstroApp Mobile` GitHub Actions workflow publishes the repository root to GitHub Pages after changes reach `main`. GitHub Pages must use **GitHub Actions** as the source in repository settings. The published app and its static files are public; your saved site, gear, and Field Kit data remain on your phone unless you export a backup. Backup files include saved coordinates, so keep them private.
 
 ## Local preview
 

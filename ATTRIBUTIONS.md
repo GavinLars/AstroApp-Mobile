@@ -36,5 +36,6 @@ Creative Commons Attribution-ShareAlike 4.0 International license (CC BY-SA
 
 `data/deep-sky-targets.json` is generated from this project's
 `target_database.py`; `data/default-settings.json` is generated from the local
-desktop settings file. User gear and location are stored in the browser on the
-iPhone and are not included in the app download.
+desktop settings file. User gear, location, Field Kit session counts, and
+packing-list changes are stored in the browser on the iPhone and are not
+included in the app download.
