@@ -2,14 +2,24 @@
 
 ## Light-pollution atlas
 
-The bundled world and North America map images are resized copies of David
-Lorenz's 2025 World Atlas of Artificial Night Sky Brightness. The atlas estimates
-artificial zenith sky brightness. A tapped reading is an approximate atlas-zone
-match, not a Bortle class or a live measurement. The world image has lower
-resolution than the North America image.
+The bundled world and North America overview images are resized copies of David
+Lorenz's 2025 World Atlas of Artificial Night Sky Brightness. The offline tile
+bundle uses the medium-resolution world map and full-resolution North America
+map, with both boundary and no-boundary versions. Readings sample the nearest
+cell in each no-boundary data layer, avoiding coastline and political-boundary
+colors. The world grid spacing is 1/40 degree (about 2.8 km north–south); North
+America is 1/120 degree (about 0.93 km north–south). Grid spacing is map
+resolution, not a claim about prediction accuracy.
+
+The atlas models artificial brightness at zenith from satellite light-source
+data and atmospheric light propagation. It is not a direct measurement, a
+Bortle score, or a guarantee of on-site conditions.
 
 - Atlas and methodology: <https://djlorenz.github.io/astronomy/lp/index.html>
 - Zone color scale: <https://djlorenz.github.io/astronomy/lp/colors.html>
+- World detail sources: <https://djlorenz.github.io/astronomy/lp2025/world2025_low3.png> and <https://djlorenz.github.io/astronomy/lp2025/world2025B_low3.png>
+- North America detail sources: <https://djlorenz.github.io/astronomy/lp2025/NorthAmerica2025.png> and <https://djlorenz.github.io/astronomy/lp2025/NorthAmerica2025B.png>
+- Tile builder: `tools/prepare_atlas_maps.py`
 
 ## Star chart
 

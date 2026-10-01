@@ -1,4 +1,4 @@
-const CACHE_NAME = "astroapp-field-guide-v2";
+const CACHE_NAME = "astroapp-field-guide-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,7 +12,8 @@ const APP_SHELL = [
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/world-atlas-2025.png",
-  "./assets/north-america-atlas-2025.png"
+  "./assets/north-america-atlas-2025.png",
+  "./assets/light-pollution-atlas-2025-detail.bin"
 ];
 
 self.addEventListener("install", (event) => {

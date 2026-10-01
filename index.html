@@ -75,7 +75,7 @@
           <div><p class="eyebrow">OFFLINE ATLAS · 2025</p><h1 id="pollutionHeading">Light pollution</h1></div>
           <button class="button button-quiet" id="mapMySite" type="button">My site</button>
         </div>
-        <p class="page-summary">Tap the map to inspect a location. Pinch or use the controls to zoom and drag to pan.</p>
+        <p class="page-summary">Scout a dark-sky area, then tap a point for its offline atlas estimate. Pinch or use the controls to zoom; drag to pan.</p>
         <div class="map-toolbar" role="group" aria-label="Map area">
           <button class="chip-button active" id="mapWorld" type="button">World</button>
           <button class="chip-button" id="mapNorthAmerica" type="button">North America</button>
@@ -85,17 +85,22 @@
         </div>
         <div class="map-frame">
           <canvas id="pollutionMap" aria-label="Offline world light-pollution atlas. Tap to place a site pin."></canvas>
-          <div class="map-hint" id="mapHint">Tap to place a pin</div>
+          <div class="map-scale" id="mapScale" aria-label="Approximate map scale">
+            <div class="map-scale-top"><span id="mapScaleText">Regional view</span><span id="mapZoomText">1×</span></div>
+            <i id="mapScaleBar"></i>
+          </div>
+          <div class="map-hint" id="mapHint">Tap for atlas estimate</div>
         </div>
         <article class="card reading-card" id="pollutionReading" aria-live="polite">
           <div class="reading-top"><div><p class="eyebrow">SELECTED LOCATION</p><h2 id="readingZone">Choose a point on the map</h2></div><span id="readingSwatch" class="zone-swatch"></span></div>
           <p class="reading-coordinates" id="readingCoordinates">Your saved site is marked on the map.</p>
+          <p class="reading-coordinates" id="readingGrid">Select a point to see atlas grid spacing.</p>
           <p class="reading-value" id="readingBrightness">—</p>
-          <p class="card-note" id="readingExplanation">The atlas estimates artificial sky brightness straight overhead; it is not a Bortle score.</p>
+          <p class="card-note" id="readingExplanation">Atlas values estimate artificial brightness at zenith. They are not Bortle scores, field measurements, or guarantees of on-site conditions.</p>
           <button class="button button-primary full-width" id="saveMapPin" type="button" disabled>Set as observing site</button>
         </article>
         <div class="zone-legend" aria-label="Light pollution zone color key" id="zoneLegend"></div>
-        <p class="small-note">Atlas: David Lorenz, World Atlas of Artificial Night Sky Brightness (2025). The world view is lower resolution; North America is more detailed. Readings are approximate when tapped between map pixels.</p>
+        <p class="small-note">Atlas: David Lorenz, World Atlas of Artificial Night Sky Brightness (2025). North America detail uses a 1/120° grid; the world view uses a coarser 1/40° grid. Grid spacing describes map detail, not prediction accuracy. Local lighting, terrain, atmosphere, and horizon glow can differ.</p>
       </section>
 
       <section class="screen" id="screen-framing" aria-labelledby="framingHeading" hidden>

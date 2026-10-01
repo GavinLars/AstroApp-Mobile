@@ -116,9 +116,13 @@ h2 { margin-bottom: 0; font-size: 1.03rem; line-height: 1.25; font-weight: 620; 
 .map-frame { position: relative; overflow: hidden; width: 100%; height: clamp(230px, 54vh, 430px); border: 1px solid var(--line); border-radius: 16px; background: #050c12; touch-action: none; }
 #pollutionMap { display: block; width: 100%; height: 100%; }
 .map-hint { position: absolute; right: 8px; bottom: 8px; padding: 5px 8px; border-radius: 999px; background: rgba(5,12,18,.78); color: white; font-size: .61rem; pointer-events: none; }
+.map-scale { position: absolute; left: 9px; bottom: 8px; display: grid; gap: 3px; min-width: 72px; padding: 5px 7px; border-radius: 8px; background: rgba(5,12,18,.82); color: white; font-size: .59rem; pointer-events: none; }
+.map-scale-top { display: flex; justify-content: space-between; gap: 10px; }
+.map-scale i { display: block; height: 5px; max-width: 100%; border: 1px solid rgba(255,255,255,.95); border-top: 0; }
 .reading-card { margin-top: 10px; }
 .reading-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .reading-coordinates { margin: 6px 0 0; color: var(--muted); font-size: .72rem; }
+.reading-coordinates + .reading-coordinates { margin-top: 4px; }
 .reading-value { margin: 11px 0 0; font-size: .94rem; font-weight: 660; }
 .zone-swatch { width: 27px; height: 27px; flex: 0 0 27px; border: 1px solid rgba(255,255,255,.42); border-radius: 8px; background: transparent; }
 .reading-card .button { margin-top: 14px; }

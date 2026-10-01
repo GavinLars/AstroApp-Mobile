@@ -1,6 +1,9 @@
 "use strict";
 
 const STORAGE_KEY = "astroapp.mobile.preferences.v1";
+const ATLAS_DETAIL_URL = "./assets/light-pollution-atlas-2025-detail.bin";
+const MAP_MAX_ZOOM = { world: 256, "north-america": 256 };
+const MAP_TILE_CACHE_LIMIT = 32;
 const $ = (id) => document.getElementById(id);
 const dom = {
   status: $("offlineStatus"), statusText: $("offlineStatusText"), toast: $("toast"),
@@ -34,6 +37,7 @@ const state = {
   targets: [], stars: [], selectedTarget: null, night: null,
   mapArea: "world", mapZoom: 1, mapPanX: 0, mapPanY: 0, mapImage: null,
   mapTransform: null, mapPointers: new Map(), mapMoved: false, mapLast: null, mapPinch: null,
+  mapAtlas: null, mapAtlasPromise: null, mapAtlasFailed: false, mapTiles: new Map(), mapSampleId: 0,
   mapPin: null, mapNeedsFocus: false, pendingMapFocus: null, offlineReady: false, toastTimer: 0,
 };
 
@@ -367,6 +371,144 @@ function mapSourcePoint(lat, lon, area = state.mapArea) {
     y: (bounds.latMax - lat) / (bounds.latMax - bounds.latMin) * state.mapImage.height };
 }
 
+function mapMaxZoom() { return MAP_MAX_ZOOM[state.mapArea] || 64; }
+
+function mapDetailLevel() {
+  if (state.mapZoom <= 8) return null;
+  if (state.mapZoom >= 32) return 0;
+  if (state.mapZoom >= 16) return 1;
+  return 2;
+}
+
+async function loadAtlasImage(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("Could not decode atlas tile."));
+      image.src = url;
+    });
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function loadAtlasBundle() {
+  if (state.mapAtlas) return state.mapAtlas;
+  if (!state.mapAtlasPromise) {
+    state.mapAtlasPromise = fetch(ATLAS_DETAIL_URL).then(async (response) => {
+      if (!response.ok) throw new Error("High-resolution atlas bundle is unavailable.");
+      const buffer = await response.arrayBuffer();
+      const bytes = new Uint8Array(buffer), view = new DataView(buffer);
+      if (bytes.length < 8 || String.fromCharCode(...bytes.slice(0, 4)) !== "AATP") throw new Error("Invalid atlas bundle.");
+      const headerLength = view.getUint32(4, true), headerEnd = 8 + headerLength;
+      if (headerEnd > bytes.length) throw new Error("Incomplete atlas bundle.");
+      const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, headerEnd)));
+      state.mapAtlas = { buffer, payloadOffset: headerEnd, header };
+      return state.mapAtlas;
+    }).catch((error) => { state.mapAtlasPromise = null; throw error; });
+  }
+  return state.mapAtlasPromise;
+}
+
+function atlasTile(layer, level, tileX, tileY) {
+  const key = `${layer}:${level}:${tileX}:${tileY}`;
+  let tile = state.mapTiles.get(key);
+  if (tile) {
+    state.mapTiles.delete(key); state.mapTiles.set(key, tile);
+    return tile;
+  }
+  tile = { image: null, promise: null };
+  state.mapTiles.set(key, tile);
+  tile.promise = loadAtlasBundle().then(async (bundle) => {
+    const entry = bundle.header.tiles[layer]?.[`${level}/${tileX}/${tileY}`];
+    if (!entry) throw new Error("Atlas tile is missing.");
+    const start = bundle.payloadOffset + entry.offset;
+    const blob = new Blob([bundle.buffer.slice(start, start + entry.length)], { type: "image/png" });
+    tile.image = await loadAtlasImage(blob);
+    tile.promise = null;
+    trimAtlasTileCache();
+    renderMap();
+    return tile.image;
+  }).catch((error) => {
+    state.mapTiles.delete(key);
+    state.mapAtlasFailed = true;
+    $("mapHint").textContent = "Map detail unavailable · reopen online to refresh";
+    console.warn(error);
+    return null;
+  });
+  return tile;
+}
+
+function trimAtlasTileCache() {
+  if (state.mapTiles.size <= MAP_TILE_CACHE_LIMIT) return;
+  for (const [key, tile] of state.mapTiles) {
+    if (!tile.promise) {
+      state.mapTiles.delete(key);
+      if (state.mapTiles.size <= MAP_TILE_CACHE_LIMIT) break;
+    }
+  }
+}
+
+function drawAtlasDetail(ctx, transform) {
+  const level = mapDetailLevel();
+  if (level === null) return;
+  if (!state.mapAtlas) {
+    if (!state.mapAtlasFailed) loadAtlasBundle().then(() => renderMap()).catch(() => {
+      state.mapAtlasFailed = true;
+      $("mapHint").textContent = "Map detail unavailable · reopen online to refresh";
+    });
+    return;
+  }
+  const meta = state.mapAtlas.header.layers[`${state.mapArea}-display`];
+  const levelScale = 2 ** level;
+  const levelWidth = Math.ceil(meta.width / levelScale), levelHeight = Math.ceil(meta.height / levelScale);
+  const tileSize = state.mapAtlas.header.tileSize;
+  const rawLeft = (0 - transform.x) / transform.scale / state.mapImage.width * levelWidth;
+  const rawTop = (0 - transform.y) / transform.scale / state.mapImage.height * levelHeight;
+  const rawRight = (transform.w - transform.x) / transform.scale / state.mapImage.width * levelWidth;
+  const rawBottom = (transform.h - transform.y) / transform.scale / state.mapImage.height * levelHeight;
+  if (rawRight <= 0 || rawBottom <= 0 || rawLeft >= levelWidth || rawTop >= levelHeight) return;
+  const sourceLeft = Math.max(0, rawLeft), sourceTop = Math.max(0, rawTop);
+  const sourceRight = Math.min(levelWidth, rawRight), sourceBottom = Math.min(levelHeight, rawBottom);
+  const minTileX = Math.max(0, Math.floor(sourceLeft / tileSize)), minTileY = Math.max(0, Math.floor(sourceTop / tileSize));
+  const maxTileX = Math.min(Math.ceil(levelWidth / tileSize) - 1, Math.floor(Math.max(0, sourceRight - 1) / tileSize));
+  const maxTileY = Math.min(Math.ceil(levelHeight / tileSize) - 1, Math.floor(Math.max(0, sourceBottom - 1) / tileSize));
+  for (let tileY = minTileY; tileY <= maxTileY; tileY++) {
+    for (let tileX = minTileX; tileX <= maxTileX; tileX++) {
+      const tile = atlasTile(`${state.mapArea}-display`, level, tileX, tileY);
+      if (!tile.image) continue;
+      const x = transform.x + tileX * tileSize * state.mapImage.width / levelWidth * transform.scale;
+      const y = transform.y + tileY * tileSize * state.mapImage.height / levelHeight * transform.scale;
+      const width = tile.image.naturalWidth * state.mapImage.width / levelWidth * transform.scale;
+      const height = tile.image.naturalHeight * state.mapImage.height / levelHeight * transform.scale;
+      ctx.drawImage(tile.image, x, y, width, height);
+    }
+  }
+}
+
+function formatMapDistance(km) {
+  if (km >= 1000) return `${Math.round(km).toLocaleString()} km`;
+  if (km >= 10) return `${Math.round(km)} km`;
+  if (km >= 1) return `${km.toFixed(1)} km`;
+  return `${Math.round(km * 1000)} m`;
+}
+
+function updateMapScale(transform) {
+  const bounds = mapBounds(state.mapArea);
+  const centerSourceY = (transform.h / 2 - transform.y) / transform.scale;
+  const centerLat = clamp(bounds.latMax - centerSourceY / state.mapImage.height * (bounds.latMax - bounds.latMin), bounds.latMin, bounds.latMax);
+  const kmPerPixel = (bounds.lonMax - bounds.lonMin) * 111.32 * Math.cos(centerLat * Math.PI / 180) /
+    state.mapImage.width / transform.scale;
+  const targetKm = Math.max(0.001, kmPerPixel * transform.w * 0.24);
+  const power = 10 ** Math.floor(Math.log10(targetKm));
+  const scaleKm = [5, 2, 1].map((factor) => factor * power).find((value) => value <= targetKm) || power;
+  $("mapScaleText").textContent = `~${formatMapDistance(scaleKm)}`;
+  $("mapZoomText").textContent = `${state.mapZoom.toFixed(state.mapZoom < 10 ? 1 : 0)}×`;
+  $("mapScaleBar").style.width = `${Math.min(transform.w * 0.55, Math.max(1, scaleKm / kmPerPixel))}px`;
+  $("mapZoomIn").disabled = state.mapZoom >= mapMaxZoom();
+  $("mapZoomOut").disabled = state.mapZoom <= 1;
+}
+
 function resizeMapCanvas() {
   const rect = dom.mapCanvas.getBoundingClientRect();
   if (rect.width < 2 || rect.height < 2) return;
@@ -390,6 +532,8 @@ function renderMap(showPin = true) {
   const drawW = image.width * scale, drawH = image.height * scale;
   ctx.drawImage(image, x, y, drawW, drawH);
   state.mapTransform = { x, y, scale, dpr, w, h };
+  drawAtlasDetail(ctx, state.mapTransform);
+  updateMapScale(state.mapTransform);
   const pin = showPin ? (state.mapPin || (state.siteConfigured ? state.prefs.site : null)) : null;
   const pinBounds = mapBounds(state.mapArea);
   if (pin && pin.lat >= pinBounds.latMin && pin.lat <= pinBounds.latMax && pin.lon >= pinBounds.lonMin && pin.lon <= pinBounds.lonMax) {
@@ -404,6 +548,7 @@ function renderMap(showPin = true) {
 }
 
 function setMapArea(area, focusSite = true) {
+  state.mapSampleId++;
   if (!(["world", "north-america"].includes(area))) return;
   state.mapArea = area;
   $("mapWorld").classList.toggle("active", area === "world");
@@ -434,7 +579,7 @@ function focusMapOn(lat, lon, zoom = state.mapZoom) {
   const canvas = dom.mapCanvas, rect = canvas.getBoundingClientRect(), fit = Math.min(rect.width / state.mapImage.width, rect.height / state.mapImage.height);
   if (rect.width < 2 || rect.height < 2) { state.mapNeedsFocus = true; return; }
   state.mapNeedsFocus = false;
-  state.mapZoom = clamp(zoom, 1, 8);
+  state.mapZoom = clamp(zoom, 1, mapMaxZoom());
   const scale = fit * state.mapZoom;
   const baseX = (rect.width - state.mapImage.width * fit) / 2 + (state.mapImage.width * fit - state.mapImage.width * scale) / 2;
   const baseY = (rect.height - state.mapImage.height * fit) / 2 + (state.mapImage.height * fit - state.mapImage.height * scale) / 2;
@@ -450,8 +595,8 @@ function changeMapZoom(nextZoom, anchorX = null, anchorY = null) {
   const anchor = { x: anchorX ?? rect.width / 2, y: anchorY ?? rect.height / 2 };
   const old = state.mapTransform;
   const srcX = (anchor.x - old.x) / old.scale, srcY = (anchor.y - old.y) / old.scale;
-  const oldScale = old.scale, fit = Math.min(rect.width / state.mapImage.width, rect.height / state.mapImage.height);
-  state.mapZoom = clamp(nextZoom, 1, 8);
+  const fit = Math.min(rect.width / state.mapImage.width, rect.height / state.mapImage.height);
+  state.mapZoom = clamp(nextZoom, 1, mapMaxZoom());
   const scale = fit * state.mapZoom;
   const baseX = (rect.width - state.mapImage.width * fit) / 2 + (state.mapImage.width * fit - state.mapImage.width * scale) / 2;
   const baseY = (rect.height - state.mapImage.height * fit) / 2 + (state.mapImage.height * fit - state.mapImage.height * scale) / 2;
@@ -472,34 +617,65 @@ function nearestZone(rgba) {
   return winner;
 }
 
+async function sampleAtlasCell(lat, lon, area = state.mapArea) {
+  const bundle = await loadAtlasBundle(), bounds = mapBounds(area);
+  const meta = bundle.header.layers[`${area}-data`], tileSize = bundle.header.tileSize;
+  const pixelX = clamp(Math.floor((lon - bounds.lonMin) / (bounds.lonMax - bounds.lonMin) * meta.width), 0, meta.width - 1);
+  const pixelY = clamp(Math.floor((bounds.latMax - lat) / (bounds.latMax - bounds.latMin) * meta.height), 0, meta.height - 1);
+  const tile = atlasTile(`${area}-data`, 0, Math.floor(pixelX / tileSize), Math.floor(pixelY / tileSize));
+  const image = tile.image || await tile.promise;
+  if (!image) throw new Error("The detailed atlas reading could not be loaded.");
+  const sample = document.createElement("canvas"); sample.width = 1; sample.height = 1;
+  const context = sample.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, pixelX % tileSize, pixelY % tileSize, 1, 1, 0, 0, 1, 1);
+  return context.getImageData(0, 0, 1, 1).data;
+}
+
+function mapGridSpacing(area, latitude) {
+  const kmPerCellNorthSouth = 111.32 / (area === "north-america" ? 120 : 40);
+  const kmPerCellEastWest = kmPerCellNorthSouth * Math.cos(latitude * Math.PI / 180);
+  return `Atlas grid spacing here: about ${kmPerCellNorthSouth.toFixed(1)} × ${kmPerCellEastWest.toFixed(1)} km`;
+}
+
 function updateMapReading(lat, lon, color) {
   const zone = nearestZone(color);
   state.mapPin = { lat, lon };
   $("readingZone").textContent = `Zone ${zone.id} · ${zone.name}`;
-  $("readingCoordinates").textContent = formatCoords(lat, lon);
+  $("readingCoordinates").textContent = `Tapped ${formatCoords(lat, lon)}`;
+  $("readingGrid").textContent = mapGridSpacing(state.mapArea, lat);
   $("readingBrightness").textContent = `${zone.lpi} LPI · about ${zone.sqm} mag/arcsec²`;
   $("readingSwatch").style.background = zone.color;
-  $("readingExplanation").textContent = "Approximate artificial zenith brightness for this atlas pixel. It is not a Bortle score or a live measurement.";
+  $("readingExplanation").textContent = state.mapArea === "north-america"
+    ? "2025 satellite-based model estimate at zenith, sampled from the 1/120° North America atlas. Grid spacing is not prediction accuracy; local lighting and terrain can differ. Not a Bortle score or field measurement."
+    : "2025 satellite-based model estimate at zenith, sampled from the 1/40° world atlas. Grid spacing is not prediction accuracy; local lighting and terrain can differ. Not a Bortle score or field measurement.";
   $("saveMapPin").disabled = false;
-  $("mapHint").textContent = `Zone ${zone.id} · tap another point`;
+  $("mapHint").textContent = `Zone ${zone.id} · tap to compare`;
   renderMap();
 }
 
-function inspectMapPoint(clientX, clientY) {
+async function inspectMapPoint(clientX, clientY) {
   const transform = state.mapTransform, rect = dom.mapCanvas.getBoundingClientRect();
   if (!transform || !state.mapImage) return;
   const x = clientX - rect.left, y = clientY - rect.top;
   const sx = (x - transform.x) / transform.scale, sy = (y - transform.y) / transform.scale;
   if (sx < 0 || sx >= state.mapImage.width || sy < 0 || sy >= state.mapImage.height) { toast("Tap inside the map area to inspect a location."); return; }
+  const sampleId = ++state.mapSampleId;
   const bounds = mapBounds(state.mapArea);
   const lon = bounds.lonMin + sx / state.mapImage.width * (bounds.lonMax - bounds.lonMin);
   const lat = bounds.latMax - sy / state.mapImage.height * (bounds.latMax - bounds.latMin);
-  const ctx = dom.mapCanvas.getContext("2d");
   try {
-    renderMap(false);
-    const color = ctx.getImageData(Math.round(x * transform.dpr), Math.round(y * transform.dpr), 1, 1).data;
+    let color;
+    if (state.mapArea === "north-america" || state.mapArea === "world") color = await sampleAtlasCell(lat, lon);
+    else {
+      const ctx = dom.mapCanvas.getContext("2d");
+      renderMap(false);
+      color = ctx.getImageData(Math.round(x * transform.dpr), Math.round(y * transform.dpr), 1, 1).data;
+    }
+    if (sampleId !== state.mapSampleId) return;
     updateMapReading(lat, lon, color);
-  } catch { toast("Could not read this map pixel."); }
+  } catch {
+    if (sampleId === state.mapSampleId) toast("Could not load the offline atlas reading.");
+  }
 }
 
 function renderZoneLegend() {
@@ -834,8 +1010,8 @@ function bindEvents() {
     const area = preferNA ? "north-america" : "world";
     if (area !== state.mapArea) setMapArea(area, true); else focusMapOn(site.lat, site.lon, Math.max(state.mapZoom, area === "world" ? 1.5 : 1.25));
   });
-  $("mapZoomIn").addEventListener("click", () => changeMapZoom(state.mapZoom * 1.45));
-  $("mapZoomOut").addEventListener("click", () => changeMapZoom(state.mapZoom / 1.45));
+  $("mapZoomIn").addEventListener("click", () => changeMapZoom(state.mapZoom * 1.7));
+  $("mapZoomOut").addEventListener("click", () => changeMapZoom(state.mapZoom / 1.7));
   $("saveMapPin").addEventListener("click", () => {
     if (!state.mapPin) return;
     state.prefs.site = { name: "Pinned location", lat: state.mapPin.lat, lon: state.mapPin.lon };
@@ -877,7 +1053,11 @@ function bindEvents() {
   $("closeInstall").addEventListener("click", () => $("installDialog").close());
   $("doneInstall").addEventListener("click", () => $("installDialog").close());
   window.addEventListener("resize", () => { drawTimeline(); if (!$("screen-pollution").hidden) resizeMapCanvas(); if (!$("screen-framing").hidden) drawFraming(); });
-  window.addEventListener("online", () => { if (!state.offlineReady) setupOffline(); });
+  window.addEventListener("online", () => {
+    state.mapAtlasFailed = false;
+    if (!state.offlineReady) setupOffline();
+    if (state.mapZoom > 8) renderMap();
+  });
 }
 
 function changeDate(days) {

@@ -5,11 +5,11 @@ An offline-first iPhone field guide for astrophotography. This public deployment
 ## Phone tools
 
 - **Sky Tonight** — moon phase, sunset and twilight times, a night timeline, and deep-sky targets ranked for the selected date and saved site.
-- **Light Pollution** — bundled 2025 atlas maps with an approximate zone reading when you tap a location.
+- **Light Pollution** — offline 2025 world and North America atlas tiles; both views zoom to 256× and sample the boundary-free data layer when tapped.
 - **Framing** — local star chart, target size, and camera field of view from saved camera and lens details.
 - **My Gear** — local observing site, cameras, lenses, and import/export backup.
 
-Sky positions, the star catalog, target list, maps, and application code are bundled here. After the first install finishes, these tools work without an internet connection. GPS is optional; the site can be entered manually.
+Sky positions, the star catalog, target list, maps, and application code are bundled here. After the first install finishes, these tools work without an internet connection. GPS is optional; the site can be entered manually. The world map uses a 1/40° grid and North America uses 1/120°. Grid spacing describes map detail, not prediction accuracy. Atlas values estimate artificial zenith brightness, not Bortle class or measured on-site sky quality.
 
 ## Install on iPhone
 
