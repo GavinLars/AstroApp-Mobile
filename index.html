@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08131f">
+  <meta name="description" content="Offline astrophotography field guide for iPhone.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AstroApp">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icon-180.png">
+  <link rel="icon" href="./assets/icon-192.png" type="image/png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>AstroApp</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img src="./assets/icon-180.png" alt="" width="38" height="38">
+        <div><strong>ASTROAPP</strong><span>FIELD GUIDE</span></div>
+      </div>
+      <button class="offline-pill" id="offlineStatus" type="button" aria-label="Offline setup status">
+        <span class="status-dot"></span><span id="offlineStatusText">Loading local sky data…</span>
+      </button>
+    </header>
+
+    <main id="appMain">
+      <section class="screen active" id="screen-sky" aria-labelledby="skyHeading">
+        <div class="page-head">
+          <div><p class="eyebrow">PLAN YOUR SESSION</p><h1 id="skyHeading">Sky tonight</h1></div>
+          <button class="button button-quiet" id="skyToday" type="button">Tonight</button>
+        </div>
+        <div class="site-strip">
+          <div><span class="site-pin">⌖</span><span id="skySiteName">Set observing site</span><span class="muted" id="skyCoordinates"></span></div>
+          <button class="text-button" id="skyUseLocation" type="button">Use GPS</button>
+        </div>
+        <div class="date-strip" aria-label="Choose night">
+          <button class="circle-button" id="skyPrevious" type="button" aria-label="Previous night">‹</button>
+          <input id="skyDate" type="date" aria-label="Night date">
+          <button class="circle-button" id="skyNext" type="button" aria-label="Next night">›</button>
+        </div>
+
+        <div class="summary-grid">
+          <article class="card moon-card">
+            <p class="eyebrow">MOON PHASE</p>
+            <div class="moon-layout"><div class="moon-orb" id="moonOrb" aria-hidden="true"></div>
+              <div><h2 id="moonPhase">—</h2><p id="moonPercent" class="muted">— illuminated</p></div>
+            </div>
+            <p id="moonAdvice" class="card-note">Calculating tonight’s sky…</p>
+          </article>
+          <article class="card dark-card">
+            <p class="eyebrow">ASTRONOMICAL DARK</p>
+            <strong class="large-value" id="darkWindow">—</strong>
+            <p class="card-note">Sun at least 18° below the horizon</p>
+          </article>
+        </div>
+
+        <article class="card timeline-card">
+          <div class="card-heading"><div><p class="eyebrow">NIGHT TIMELINE</p><h2 id="timelineDate">Sunset to sunrise</h2></div><span class="legend-dot"></span></div>
+          <p class="card-note" id="skyLocationPrompt" hidden>Add your observing site in My Gear to see local sunset, darkness, and target visibility.</p>
+          <canvas id="skyTimeline" height="104" aria-label="Sun, moon, and dark-sky timeline"></canvas>
+          <div class="timeline-legend" id="timelineLegend"><span><i class="swatch daylight"></i>Day</span><span><i class="swatch twilight"></i>Twilight</span><span><i class="swatch dark"></i>Dark</span><span><i class="swatch moonlight"></i>Moon up</span></div>
+          <div class="event-grid" id="skyEvents"></div>
+        </article>
+
+        <div class="section-title"><div><p class="eyebrow">DARK-SKY PICKS</p><h2>Worth shooting</h2></div><span class="muted" id="targetCount"></span></div>
+        <div class="target-list" id="skyTargets" aria-live="polite"></div>
+        <p class="small-note">Astronomical planning uses your saved location and the phone’s clock. No forecast or network lookup is used.</p>
+      </section>
+
+      <section class="screen" id="screen-pollution" aria-labelledby="pollutionHeading" hidden>
+        <div class="page-head">
+          <div><p class="eyebrow">OFFLINE ATLAS · 2025</p><h1 id="pollutionHeading">Light pollution</h1></div>
+          <button class="button button-quiet" id="mapMySite" type="button">My site</button>
+        </div>
+        <p class="page-summary">Tap the map to inspect a location. Pinch or use the controls to zoom and drag to pan.</p>
+        <div class="map-toolbar" role="group" aria-label="Map area">
+          <button class="chip-button active" id="mapWorld" type="button">World</button>
+          <button class="chip-button" id="mapNorthAmerica" type="button">North America</button>
+          <span class="toolbar-spacer"></span>
+          <button class="circle-button" id="mapZoomOut" type="button" aria-label="Zoom out">−</button>
+          <button class="circle-button" id="mapZoomIn" type="button" aria-label="Zoom in">+</button>
+        </div>
+        <div class="map-frame">
+          <canvas id="pollutionMap" aria-label="Offline world light-pollution atlas. Tap to place a site pin."></canvas>
+          <div class="map-hint" id="mapHint">Tap to place a pin</div>
+        </div>
+        <article class="card reading-card" id="pollutionReading" aria-live="polite">
+          <div class="reading-top"><div><p class="eyebrow">SELECTED LOCATION</p><h2 id="readingZone">Choose a point on the map</h2></div><span id="readingSwatch" class="zone-swatch"></span></div>
+          <p class="reading-coordinates" id="readingCoordinates">Your saved site is marked on the map.</p>
+          <p class="reading-value" id="readingBrightness">—</p>
+          <p class="card-note" id="readingExplanation">The atlas estimates artificial sky brightness straight overhead; it is not a Bortle score.</p>
+          <button class="button button-primary full-width" id="saveMapPin" type="button" disabled>Set as observing site</button>
+        </article>
+        <div class="zone-legend" aria-label="Light pollution zone color key" id="zoneLegend"></div>
+        <p class="small-note">Atlas: David Lorenz, World Atlas of Artificial Night Sky Brightness (2025). The world view is lower resolution; North America is more detailed. Readings are approximate when tapped between map pixels.</p>
+      </section>
+
+      <section class="screen" id="screen-framing" aria-labelledby="framingHeading" hidden>
+        <div class="page-head">
+          <div><p class="eyebrow">LOCAL STAR CATALOG</p><h1 id="framingHeading">Framing</h1></div>
+          <span class="offline-tag">OFFLINE</span>
+        </div>
+        <div class="form-grid framing-controls">
+          <label class="field span-two">Target
+            <input id="frameTargetSearch" type="search" list="frameTargetOptions" placeholder="Search targets" autocomplete="off">
+            <datalist id="frameTargetOptions"></datalist>
+          </label>
+          <label class="field">Camera<select id="frameCamera"></select></label>
+          <label class="field">Lens / scope<select id="frameLens"></select></label>
+          <label class="field">Focal length<input id="frameFocal" type="number" inputmode="decimal" min="1" step="1"></label>
+          <label class="field">Rotation <span class="range-value" id="frameRotationLabel">0°</span>
+            <input id="frameRotation" type="range" min="-90" max="90" step="1" value="0">
+          </label>
+        </div>
+        <div class="framing-stats">
+          <div><span class="eyebrow">FIELD OF VIEW</span><strong id="frameFov">—</strong></div>
+          <div><span class="eyebrow">TARGET SIZE</span><strong id="frameTargetSize">—</strong></div>
+        </div>
+        <article class="card chart-card">
+          <canvas id="framingChart" aria-label="Offline star-field chart showing the camera field of view"></canvas>
+          <div class="chart-caption"><span id="chartTargetName">Target center</span><span>North ↑</span></div>
+        </article>
+        <p class="small-note">Chart uses the local HYG star catalog through magnitude 6.5, with target size from the built-in catalog. It is an orientation guide, not survey imagery.</p>
+      </section>
+
+      <section class="screen" id="screen-gear" aria-labelledby="gearHeading" hidden>
+        <div class="page-head">
+          <div><p class="eyebrow">SAVED ON THIS IPHONE</p><h1 id="gearHeading">My gear</h1></div>
+          <button class="button button-quiet" id="gearExport" type="button">Export</button>
+        </div>
+        <article class="card location-card">
+          <div class="section-title compact"><div><p class="eyebrow">OBSERVING SITE</p><h2>Where you shoot</h2></div><button class="text-button" id="gearUseLocation" type="button">Use GPS</button></div>
+          <div class="form-grid">
+            <label class="field span-two">Site name<input id="siteNameInput" type="text" maxlength="60" autocomplete="off"></label>
+            <label class="field">Latitude<input id="siteLatInput" type="number" inputmode="decimal" min="-90" max="90" step="0.0001"></label>
+            <label class="field">Longitude<input id="siteLonInput" type="number" inputmode="decimal" min="-180" max="180" step="0.0001"></label>
+          </div>
+          <button class="button button-primary full-width" id="saveSite" type="button">Save observing site</button>
+        </article>
+
+        <article class="card gear-card">
+          <div class="section-title compact"><div><p class="eyebrow">CAMERAS</p><h2>Your cameras</h2></div></div>
+          <div id="cameraList" class="saved-list"></div>
+          <details class="add-details"><summary>Add a camera</summary>
+            <div class="form-grid add-form">
+              <label class="field span-two">Name<input id="newCameraName" type="text" maxlength="60"></label>
+              <label class="field">Sensor width (mm)<input id="newCameraWidth" type="number" inputmode="decimal" min="1" step="0.1"></label>
+              <label class="field">Sensor height (mm)<input id="newCameraHeight" type="number" inputmode="decimal" min="1" step="0.1"></label>
+              <label class="field span-two">Pixel size (μm)<input id="newCameraPixel" type="number" inputmode="decimal" min="0.1" step="0.01"></label>
+            </div>
+            <button class="button button-secondary full-width" id="addCamera" type="button">Add camera</button>
+          </details>
+        </article>
+
+        <article class="card gear-card">
+          <div class="section-title compact"><div><p class="eyebrow">LENSES & TELESCOPES</p><h2>Your optics</h2></div></div>
+          <div id="lensList" class="saved-list"></div>
+          <details class="add-details"><summary>Add a lens or telescope</summary>
+            <div class="form-grid add-form">
+              <label class="field span-two">Name<input id="newLensName" type="text" maxlength="60"></label>
+              <label class="field">Focal length (mm)<input id="newLensFocal" type="number" inputmode="decimal" min="1" step="1"></label>
+              <label class="field">f-number<input id="newLensRatio" type="number" inputmode="decimal" min="0.1" step="0.1"></label>
+            </div>
+            <button class="button button-secondary full-width" id="addLens" type="button">Add lens / scope</button>
+          </details>
+        </article>
+        <article class="card data-card">
+          <div class="section-title compact"><div><p class="eyebrow">BACKUP & MOVE</p><h2>Gear file</h2></div></div>
+          <p class="card-note">Export a JSON backup or import it on another device. Your location and gear stay in this app’s local storage.</p>
+          <label class="button button-secondary full-width import-button" for="gearImport">Import gear file</label>
+          <input id="gearImport" type="file" accept="application/json,.json" hidden>
+        </article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Main navigation">
+      <button class="nav-button active" data-screen="sky" type="button" aria-current="page">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.64 5.64l1.42 1.42m9.88 9.88 1.42 1.42m0-12.72-1.42 1.42m-9.88 9.88-1.42 1.42"/><circle cx="12" cy="12" r="4"/></svg><span>Tonight</span>
+      </button>
+      <button class="nav-button" data-screen="pollution" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M4 15h16M12 3c2.2 2.4 3.4 5.4 3.4 9S14.2 18.6 12 21M12 3C9.8 5.4 8.6 8.4 8.6 12s1.2 6.6 3.4 9"/></svg><span>Dark skies</span>
+      </button>
+      <button class="nav-button" data-screen="framing" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8V4h4m8 0h4v4m0 8v4h-4m-8 0H4v-4"/><circle cx="12" cy="12" r="2.6"/><path d="M12 7.5v2m0 5v2m-4.5-4.5h2m5 0h2"/></svg><span>Framing</span>
+      </button>
+      <button class="nav-button" data-screen="gear" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="4"/><circle cx="12" cy="12.5" r="1.6"/><path d="M7 6l1.1-2h7.8L17 6"/></svg><span>My gear</span>
+      </button>
+    </nav>
+  </div>
+
+  <dialog id="installDialog" class="install-dialog">
+    <div class="dialog-head"><div><p class="eyebrow">ONE-TIME SETUP</p><h2>Use AstroApp offline</h2></div><button id="closeInstall" class="circle-button" type="button" aria-label="Close">×</button></div>
+    <ol>
+      <li>Open this app address in <strong>Safari</strong> while online.</li>
+      <li>Tap <strong>Share → Add to Home Screen</strong>, then turn on <strong>Open as Web App</strong>.</li>
+      <li>Open the Home Screen app once and wait for <strong>Offline ready</strong>.</li>
+      <li>Switch on Airplane Mode and reopen it to confirm your setup.</li>
+    </ol>
+    <p class="card-note">Sky calculations, maps, star data, and gear are stored locally. The four tabs make no online requests during use.</p>
+    <button class="button button-primary full-width" id="doneInstall" type="button">Got it</button>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./app.js" defer></script>
+</body>
+</html>
