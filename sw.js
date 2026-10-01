@@ -1,4 +1,4 @@
-const CACHE_NAME = "astroapp-field-guide-v5";
+const CACHE_NAME = "astroapp-field-guide-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,13 +7,27 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./data/default-settings.json",
   "./data/deep-sky-targets.json",
+  "./data/equipment-catalog.json",
+  "./data/deep-sky-images.json",
   "./data/stars-mag65.json",
   "./assets/icon-180.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
   "./assets/world-atlas-2025.png",
   "./assets/north-america-atlas-2025.png",
-  "./assets/light-pollution-atlas-2025-detail.bin"
+  "./assets/light-pollution-atlas-2025-detail.bin",
+  "./assets/targets/m1.webp",
+  "./assets/targets/m13.webp",
+  "./assets/targets/m16.webp",
+  "./assets/targets/m27.webp",
+  "./assets/targets/m31.webp",
+  "./assets/targets/m42.webp",
+  "./assets/targets/m45.webp",
+  "./assets/targets/m51.webp",
+  "./assets/targets/m57.webp",
+  "./assets/targets/m64.webp",
+  "./assets/targets/m104.webp",
+  "./assets/targets/helix.webp"
 ];
 
 self.addEventListener("install", (event) => {

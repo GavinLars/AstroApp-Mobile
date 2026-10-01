@@ -39,3 +39,42 @@ Creative Commons Attribution-ShareAlike 4.0 International license (CC BY-SA
 desktop settings file. User gear, location, Field Kit session counts, and
 packing-list changes are stored in the browser on the iPhone and are not
 included in the app download.
+
+## Camera and lens catalog
+
+`data/equipment-catalog.json` includes 100 camera bodies and 100 optics. The
+camera list combines current manufacturer specifications with a curated subset
+of the MIT-licensed Camera Sensor Size Database. Sensor pixel pitch for
+conventional cameras is calculated from the published active image resolution
+and sensor dimensions; it is an estimate for planning, and can differ slightly
+from a maker's stated effective pixel pitch. Dedicated astronomy camera values
+use their manufacturers' published sensor dimensions and pixel pitch. Zoom
+lenses use their wide-end focal length as the initial setting; focal length can
+be adjusted in the app. Your Sony A7R III, Sigma 20mm f/1.4 DG HSM Art, and
+Rokinon 135mm f/2 ED UMC are included in the catalog. Gear saved to My Gear
+remains in the browser on the user's phone.
+
+- Source database: <https://github.com/openMVG/CameraSensorSizeDatabase>
+- Camera sensor source CSV: `data/camera-sensors-source.csv`
+- License: `data/licenses/CameraSensorSizeDatabase-MIT.txt`
+- Manufacturer specifications: Sony, Canon, Nikon, Fujifilm, Panasonic / OM
+  System, Pentax, ZWO, QHY, Sigma, Samyang / Rokinon, Tamron, Tokina, Askar,
+  William Optics, Sky-Watcher, Takahashi, and Celestron.
+- The Sigma 20mm lens: <https://www.sigma-global.com/en/lenses/a015_20_14/?tab=specification>
+- The Samyang / Rokinon 135mm lens: <https://samyangus.com/collections/samyang-lenses/products/135mm-f2-0-full-frame-telephoto>
+- The Sony A7R III: <https://www.sony.com/electronics/support/e-mount-body-ilce-7-series/ilce-7rm3/specifications>
+- ZWO ASI294 Pro sensor specifications: <https://us.zwoastro.com/products/asi294>
+
+## Offline target images
+
+`data/deep-sky-images.json` maps 12 locally stored target reference images to
+their NASA source pages and image credits. NASA's media guidance generally
+allows factual, informational use of NASA content when NASA is acknowledged and
+the use does not imply endorsement; any third-party source is identified in
+the credit on the NASA page. Some image captions explicitly identify close-up
+views rather than the full object. Images are bundled as app reference art,
+not as calibrated survey frames; the local star chart provides the calculated
+camera field-of-view overlay.
+
+- NASA image-use guidance: <https://www.nasa.gov/nasa-brand-center/images-and-media/>
+- Image titles, credits, and source pages: `data/deep-sky-images.json`

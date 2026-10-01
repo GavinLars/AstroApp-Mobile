@@ -1,0 +1,74 @@
+{
+  "M1 (Crab Nebula)": {
+    "src": "./assets/targets/m1.webp",
+    "caption": "Crab Nebula · Hubble reference image",
+    "credit": "NASA, ESA, J. Hester, and A. Loll (Arizona State University)",
+    "source": "https://science.nasa.gov/image-detail/hubble-nebula-crab-nebula-display-1/"
+  },
+  "M13 (Hercules Cluster)": {
+    "src": "./assets/targets/m13.webp",
+    "caption": "Hercules Cluster · Hubble reference image",
+    "credit": "NASA, ESA, Z. Levay (STScI), and the Hubble Heritage Team (STScI/AURA)",
+    "source": "https://science.nasa.gov/asset/hubble/compass-and-scale-image-of-m13/"
+  },
+  "M16 (Eagle Nebula)": {
+    "src": "./assets/targets/m16.webp",
+    "caption": "Eagle Nebula · Hubble spire detail",
+    "credit": "NASA, ESA, and the Hubble Heritage Team (STScI/AURA)",
+    "source": "https://science.nasa.gov/image-detail/the-eagle-has-risen-stellar-spire-in-the-eagle-nebula-2/"
+  },
+  "M27 (Dumbbell Nebula)": {
+    "src": "./assets/targets/m27.webp",
+    "caption": "Dumbbell Nebula · Hubble close-up",
+    "credit": "NASA and the Hubble Heritage Team (STScI/AURA); acknowledgment: C.R. O'Dell",
+    "source": "https://science.nasa.gov/asset/hubble/close-up-of-m27-the-dumbbell-nebula/"
+  },
+  "M31 (Andromeda Galaxy)": {
+    "src": "./assets/targets/m31.webp",
+    "caption": "Andromeda Galaxy · Hubble mosaic reference",
+    "credit": "NASA, ESA, J. Dalcanton, B.F. Williams, L.C. Johnson, the PHAT team, and R. Gendler",
+    "source": "https://science.nasa.gov/asset/hubble/andromeda-galaxy-m31-mosaic/"
+  },
+  "M42 (Orion Nebula)": {
+    "src": "./assets/targets/m42.webp",
+    "caption": "Orion Nebula · Hubble reference image",
+    "credit": "NASA, ESA, and A. Feild (STScI)",
+    "source": "https://science.nasa.gov/asset/hubble/evolution-of-the-orion-nebula-m42/"
+  },
+  "M45 (Pleiades)": {
+    "src": "./assets/targets/m45.webp",
+    "caption": "Pleiades · close-up of the Merope reflection nebula",
+    "credit": "NASA and the Hubble Heritage Team (STScI/AURA); acknowledgment: George Herbig and Theodore Simon",
+    "source": "https://science.nasa.gov/image-detail/interstellar_cloud_in_pleiades/"
+  },
+  "M51 (Whirlpool Galaxy)": {
+    "src": "./assets/targets/m51.webp",
+    "caption": "Whirlpool Galaxy · Hubble reference image",
+    "credit": "NASA, ESA, S. Beckwith (STScI), and the Hubble Heritage Team (STScI/AURA)",
+    "source": "https://science.nasa.gov/asset/hubble/out-of-this-whirl-the-whirlpool-galaxy-m51-and-companion-galaxy/"
+  },
+  "M57 (Ring Nebula)": {
+    "src": "./assets/targets/m57.webp",
+    "caption": "Ring Nebula · Hubble reference image",
+    "credit": "NASA, ESA, and the Hubble Heritage (STScI/AURA)-ESA/Hubble Collaboration",
+    "source": "https://science.nasa.gov/image-detail/ring-nebula-full_jpg/"
+  },
+  "M64 (Black Eye Galaxy)": {
+    "src": "./assets/targets/m64.webp",
+    "caption": "Black Eye Galaxy · Hubble reference image",
+    "credit": "NASA and the Hubble Heritage Team (AURA/STScI); acknowledgment: S. Smartt and D. Richstone",
+    "source": "https://science.nasa.gov/image-detail/black-eye-galaxy-print/"
+  },
+  "M104 (Sombrero Galaxy)": {
+    "src": "./assets/targets/m104.webp",
+    "caption": "Sombrero Galaxy · Hubble reference image",
+    "credit": "NASA and the Hubble Heritage Team (STScI/AURA)",
+    "source": "https://science.nasa.gov/image-detail/sombrero-galaxy-hubble/"
+  },
+  "NGC 7293 (Helix Nebula)": {
+    "src": "./assets/targets/helix.webp",
+    "caption": "Helix Nebula · Hubble reference image",
+    "credit": "NASA, NOAO, ESA, the Hubble Helix Nebula Team, M. Meixner (STScI), and T.A. Rector (NRAO)",
+    "source": "https://science.nasa.gov/image-detail/idl-tiff-file-23/"
+  }
+}

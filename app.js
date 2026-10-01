@@ -41,7 +41,7 @@ const state = {
   defaults: { cameras: [], lenses: [] },
   prefs: { site: { name: "Set observing site", lat: 0, lon: 0 }, cameras: [], lenses: [] },
   siteConfigured: false,
-  targets: [], stars: [], selectedTarget: null, night: null,
+  targets: [], stars: [], cameraCatalog: [], lensCatalog: [], targetImages: {}, selectedTarget: null, night: null,
   mapArea: "world", mapZoom: 1, mapPanX: 0, mapPanY: 0, mapImage: null,
   mapTransform: null, mapPointers: new Map(), mapMoved: false, mapLast: null, mapPinch: null,
   mapAtlas: null, mapAtlasPromise: null, mapAtlasFailed: false, mapTiles: new Map(), mapSampleId: 0,
@@ -72,8 +72,8 @@ function loadPreferences() {
       state.prefs.site = { name: stored.site.name.slice(0, 60), lat: Number(stored.site.lat), lon: Number(stored.site.lon) };
       state.siteConfigured = Boolean(stored.site.name.trim() && stored.site.name !== "Set observing site");
     }
-    if (Array.isArray(stored.cameras)) state.prefs.cameras = stored.cameras.filter(validCamera).slice(0, 40);
-    if (Array.isArray(stored.lenses)) state.prefs.lenses = stored.lenses.filter(validLens).slice(0, 60);
+    if (Array.isArray(stored.cameras)) state.prefs.cameras = stored.cameras.filter(validCamera).slice(0, 100);
+    if (Array.isArray(stored.lenses)) state.prefs.lenses = stored.lenses.filter(validLens).slice(0, 100);
   } catch { /* Use bundled defaults when local storage is unavailable or malformed. */ }
 }
 
@@ -301,9 +301,14 @@ function sunAlt(date, site = state.prefs.site) {
 }
 
 function moonAlt(date, site = state.prefs.site) {
+  const { ra, dec } = moonEquatorial(date);
+  return altitude(ra, dec, date, site.lat, site.lon);
+}
+
+function moonEquatorial(date) {
   const [lon, lat] = moonEcliptic(julianDate(date));
   const [ra, dec] = eclipticToEquatorial(lon, lat);
-  return altitude(ra, dec, date, site.lat, site.lon);
+  return { ra, dec };
 }
 
 function moonPhase(date) {
@@ -354,6 +359,37 @@ function findNight(dateText) {
   const moonrise = crossingTime(nightStart, nightEnd, moonAlt, .125, true);
   const moonset = crossingTime(nightStart, nightEnd, moonAlt, .125, false);
   return { noon, sunset, sunrise, darkStart, darkEnd, nightStart, nightEnd, moonrise, moonset, end };
+}
+
+function moonFreeDarkWindows(night) {
+  if (!night?.darkStart || !night?.darkEnd || night.darkEnd <= night.darkStart) return [];
+  const start = night.darkStart, end = night.darkEnd, step = 5 * 60000, horizon = .125;
+  const windows = [];
+  let previousTime = start, previousAltitude = moonAlt(start), inside = previousAltitude <= horizon;
+  let windowStart = inside ? start : null;
+  for (let ms = start.getTime() + step; ms <= end.getTime() + step; ms += step) {
+    const currentTime = new Date(Math.min(ms, end.getTime()));
+    const currentAltitude = moonAlt(currentTime), currentInside = currentAltitude <= horizon;
+    if (currentInside !== inside) {
+      const fraction = clamp((horizon - previousAltitude) / (currentAltitude - previousAltitude), 0, 1);
+      const boundary = new Date(previousTime.getTime() + (currentTime.getTime() - previousTime.getTime()) * fraction);
+      if (inside && windowStart) windows.push({ start: windowStart, end: boundary });
+      else windowStart = boundary;
+      inside = currentInside;
+    }
+    previousTime = currentTime;
+    previousAltitude = currentAltitude;
+    if (currentTime >= end) break;
+  }
+  if (inside && windowStart) windows.push({ start: windowStart, end });
+  return windows.filter((window) => window.end - window.start >= 10 * 60000);
+}
+
+function moonFreeDarkLabel(night) {
+  if (!night?.darkStart || !night?.darkEnd) return "No full dark";
+  const windows = moonFreeDarkWindows(night);
+  if (!windows.length) return "None tonight";
+  return windows.map((window) => `${timeLabel(window.start)}–${timeLabel(window.end)}`).join(" · ");
 }
 
 function timeLabel(date) {
@@ -411,13 +447,12 @@ function drawTimeline() {
     ctx.fillStyle = alt > -.833 ? "#40394a" : alt > -6 ? "#454065" : alt > -12 ? "#313657" : alt > -18 ? "#26344e" : "#1b3347";
     ctx.fillRect(w * i / segments, 15, w / segments + 1, 60);
   }
-  ctx.fillStyle = "rgba(247,215,139,.25)";
-  if (night.darkStart && night.darkEnd) ctx.fillRect(xFor(night.darkStart), 15, Math.max(0, xFor(night.darkEnd) - xFor(night.darkStart)), 60);
-  if (night.moonrise && night.moonset && night.moonset > night.moonrise) {
-    ctx.fillStyle = "rgba(247,215,139,.12)";
-    ctx.fillRect(xFor(night.moonrise), 15, Math.max(1, xFor(night.moonset) - xFor(night.moonrise)), 60);
-  } else if (night.moonrise) {
-    ctx.fillStyle = "rgba(247,215,139,.12)"; ctx.fillRect(xFor(night.moonrise), 15, Math.max(1, w - xFor(night.moonrise)), 60);
+  ctx.fillStyle = "rgba(128,224,210,.26)";
+  for (const window of moonFreeDarkWindows(night)) ctx.fillRect(xFor(window.start), 15, Math.max(1, xFor(window.end) - xFor(window.start)), 60);
+  ctx.fillStyle = "rgba(247,215,139,.13)";
+  for (let i = 0; i < segments; i++) {
+    const mid = new Date(start.getTime() + span * (i + .5) / segments);
+    if (moonAlt(mid) > .125) ctx.fillRect(w * i / segments, 15, w / segments + 1, 60);
   }
   ctx.beginPath(); ctx.strokeStyle = "#f7d78b"; ctx.lineWidth = 2;
   for (let i = 0; i <= 50; i++) {
@@ -444,15 +479,48 @@ function targetAlt(ra, dec, sample) {
   return degrees(Math.asin(clamp(Math.sin(d) * Math.sin(lat) + Math.cos(d) * Math.cos(lat) * Math.cos(ha), -1, 1)));
 }
 
+function frameSetup() {
+  const cameraValue = $("frameCamera").value, lensValue = $("frameLens").value;
+  const camera = cameraValue === "" ? null : state.prefs.cameras[Number(cameraValue)] || null;
+  const lens = lensValue === "" ? null : state.prefs.lenses[Number(lensValue)] || null;
+  const focal = finite($("frameFocal").value, lens?.focal_length || 0);
+  return camera && focal > 0 ? { camera, lens, focal,
+    fovX: fieldOfView(camera.sensor_width, focal), fovY: fieldOfView(camera.sensor_height, focal) } : null;
+}
+
+function targetFit(target, setup) {
+  if (!setup) return { score: .5, reason: "Add your camera and lens for a gear fit estimate." };
+  const width = Math.max(.01, finite(target.size_deg?.[0], .2));
+  const height = Math.max(.01, finite(target.size_deg?.[1], .2));
+  const x = width / setup.fovX, y = height / setup.fovY;
+  const fill = Math.max(.005, Math.max(x, y));
+  const idealScore = clamp(1 - Math.abs(Math.log(fill / .42)) / Math.log(5), 0, 1);
+  const cropped = x > .92 || y > .92;
+  const percent = Math.round(Math.max(x, y) * 100);
+  const reason = cropped ? "too large for the full target to fit" : percent < 7
+    ? `wide framing; the target spans about ${percent}% of the frame's long side`
+    : `fits with about ${percent}% of the frame's long side covered`;
+  const quality = cropped ? "Tight frame" : idealScore >= .7 ? "Good fit" : idealScore >= .4 ? "Fair fit" : "Wide view";
+  return { score: cropped ? idealScore * .25 : idealScore, reason, quality, cropped, x, y };
+}
+
+function angularSeparation(raA, decA, raB, decB) {
+  const a = radians(decA), b = radians(decB);
+  return degrees(Math.acos(clamp(Math.sin(a) * Math.sin(b) + Math.cos(a) * Math.cos(b) * Math.cos(radians(raA - raB)), -1, 1)));
+}
+
 function renderTargets(dateText) {
-  const list = dom.targets;
-  list.replaceChildren();
+  const lists = [dom.targets, $("framingTargets")];
+  lists.forEach((list) => list.replaceChildren());
   if (!state.targets.length) return;
   if (!state.siteConfigured) {
     $("targetCount").textContent = "Set a site";
+    $("framingTargetCount").textContent = "Set a site";
+    $("recommendationContext").textContent = "Set your observing location to match target visibility to tonight.";
+    $("framingRecommendationContext").textContent = $("recommendationContext").textContent;
     const p = document.createElement("p"); p.className = "small-note";
     p.textContent = "Add your observing site in My Gear to see targets for local darkness.";
-    list.append(p); return;
+    lists.forEach((list) => list.append(p.cloneNode(true))); return;
   }
   if (!state.night) return;
   const night = state.night;
@@ -462,31 +530,51 @@ function renderTargets(dateText) {
   for (let i = 0; i <= 72; i++) {
     const date = new Date(begin.getTime() + (finish - begin) * i / 72);
     const sun = sunAlt(date), moon = moonAlt(date);
-    samples.push({ date, lst: localSiderealDegrees(date, state.prefs.site.lon), dark: sun <= -18, moonFree: moon <= .125, sunDark: sun <= -.833 });
+    samples.push({ date, lst: localSiderealDegrees(date, state.prefs.site.lon), moon: moonEquatorial(date), dark: sun <= -18, moonFree: moon <= .125, sunDark: sun <= -.833 });
   }
   const phase = moonPhase(dateAtLocalNoon(dateText));
+  const setup = frameSetup();
+  const setupText = setup ? `${setup.camera.name} · ${setup.lens?.name || `${setup.focal} mm`} at ${setup.focal} mm` : "Add your camera and optic in My Gear for gear-matched picks";
+  $("recommendationContext").textContent = `${setupText} · ${phase.name}, ${Math.round(phase.illumination * 100)}% illuminated`;
+  $("framingRecommendationContext").textContent = $("recommendationContext").textContent;
   const ranked = state.targets.map((target) => {
     const vals = samples.map((sample) => ({ sample, alt: targetAlt(target.ra, target.dec, sample) }));
-    const dark = vals.filter((item) => item.sample.dark && (phase.illumination < .45 || item.sample.moonFree));
-    const allDark = vals.filter((item) => item.sample.dark);
-    const considered = dark.length ? dark : allDark.length ? allDark : vals.filter((item) => item.sample.sunDark);
-    const best = considered.reduce((a, b) => b.alt > a.alt ? b : a, { alt: -90, sample: samples[0] });
-    return { ...target, bestAlt: best.alt, bestAt: best.sample.date, darkMoonless: dark.length > 0 };
-  }).filter((target) => target.bestAlt >= 12).sort((a, b) => b.bestAlt - a.bestAlt).slice(0, 8);
+    const dark = vals.filter((item) => item.sample.dark);
+    const moonless = dark.filter((item) => item.sample.moonFree);
+    const considered = moonless.length ? moonless : dark.length ? dark : vals.filter((item) => item.sample.sunDark);
+    const fit = targetFit(target, setup);
+    const scored = considered.map((item) => {
+      const moon = item.sample.moon;
+      const separation = angularSeparation(target.ra, target.dec, moon.ra, moon.dec);
+      const moonPenalty = item.sample.moonFree ? 0 : phase.illumination * clamp(1 - separation / 105, 0, 1);
+      const altitudeScore = clamp((item.alt - 10) / 75, 0, 1);
+      const moonScore = item.sample.moonFree ? 1 : 1 - moonPenalty;
+      const score = setup ? fit.score * .50 + altitudeScore * .28 + moonScore * .22 : altitudeScore * .65 + moonScore * .35;
+      return { ...item, separation, score };
+    });
+    const best = scored.reduce((a, b) => b.score > a.score ? b : a, { score: -1, alt: -90, sample: samples[0], separation: 0 });
+    return { ...target, bestAlt: best.alt, bestAt: best.sample.date, darkMoonless: best.sample.moonFree,
+      moonSeparation: best.separation, fitReason: fit.reason, fitQuality: fit.quality, fitScore: fit.score, score: best.score };
+  }).filter((target) => target.bestAlt >= 12).sort((a, b) => b.score - a.score).slice(0, 8);
   $("targetCount").textContent = `${ranked.length} picks`;
+  $("framingTargetCount").textContent = `${ranked.length} picks`;
   if (!ranked.length) {
-    const p = document.createElement("p"); p.className = "small-note"; p.textContent = "No catalog targets rise high enough during darkness at this site tonight."; list.append(p); return;
+    const p = document.createElement("p"); p.className = "small-note"; p.textContent = "No catalog targets rise high enough during darkness at this site tonight.";
+    lists.forEach((list) => list.append(p.cloneNode(true))); return;
   }
   for (const target of ranked) {
     const row = document.createElement("button"); row.type = "button"; row.className = "target-row"; row.dataset.target = target.name;
     const info = document.createElement("div");
     const title = document.createElement("h3"); title.textContent = target.name;
-    const sub = document.createElement("p"); sub.textContent = `${target.type} · highest near ${timeLabel(target.bestAt)}`;
+    const sub = document.createElement("p");
+    const moonReason = target.darkMoonless ? "Moon below horizon" : `Moon ${Math.round(target.moonSeparation)}° away`;
+    sub.textContent = `${target.type} · ${target.fitReason} · ${moonReason} · ${Math.round(target.bestAlt)}° high near ${timeLabel(target.bestAt)}`;
     info.append(title, sub);
     const score = document.createElement("div"); score.className = "target-score";
     const altitudeText = document.createElement("strong"); altitudeText.textContent = `${Math.round(target.bestAlt)}° high`;
-    const condition = document.createElement("span"); condition.textContent = target.darkMoonless ? "Dark window" : "Moon up";
-    score.append(altitudeText, condition); row.append(info, score); list.append(row);
+    const condition = document.createElement("span"); condition.textContent = setup ? target.fitQuality : target.darkMoonless ? "Moon-free" : "Moon up";
+    score.append(altitudeText, condition); row.append(info, score);
+    lists.forEach((list, index) => list.append(index ? row.cloneNode(true) : row));
   }
 }
 
@@ -502,8 +590,7 @@ function renderSky() {
   $("moonAdvice").textContent = phase.illumination < .2 ? "A dim Moon leaves more contrast for faint targets." : phase.illumination < .55 ? "The Moon adds some glow; try targets away from it." : "Bright moonlight favors star clusters and narrowband targets.";
   const night = state.night;
   const hasSite = state.siteConfigured;
-  $("darkWindow").textContent = !hasSite ? "Set a site"
-    : night.darkStart && night.darkEnd ? `${timeLabel(night.darkStart)} – ${timeLabel(night.darkEnd)}` : "No full dark";
+  $("darkWindow").textContent = !hasSite ? "Set a site" : moonFreeDarkLabel(night);
   $("timelineDate").textContent = !hasSite ? "Local times need a site"
     : night.sunset ? `${dateLabel(night.sunset)} · local time` : "Local night timeline";
   $("skyLocationPrompt").hidden = hasSite;
@@ -857,18 +944,73 @@ function renderZoneLegend() {
 
 function populateGear() {
   const cameras = state.prefs.cameras, lenses = state.prefs.lenses;
-  const cameraSelect = $("frameCamera"), lensSelect = $("frameLens");
-  cameraSelect.replaceChildren(); lensSelect.replaceChildren();
-  cameras.forEach((camera, index) => {
-    const option = document.createElement("option"); option.value = String(index); option.textContent = camera.name; cameraSelect.append(option);
-  });
-  lenses.forEach((lens, index) => {
-    const option = document.createElement("option"); option.value = String(index); option.textContent = lens.name; lensSelect.append(option);
-  });
+  const previousCamera = cameras[Number($("frameCamera").value)]?.name;
+  const previousLens = lenses[Number($("frameLens").value)]?.name;
+  populateSavedGearSelect($("frameCamera"), cameras, "Choose camera", "sensor_width", previousCamera);
+  populateSavedGearSelect($("frameLens"), lenses, "Choose lens / scope", "focal_length", previousLens);
+  populateCatalogSelect($("cameraCatalogSelect"), state.cameraCatalog, "Choose a camera", "camera");
+  populateCatalogSelect($("lensCatalogSelect"), state.lensCatalog, "Choose a lens or telescope", "lens");
   renderGearList("cameraList", cameras, "camera"); renderGearList("lensList", lenses, "lens");
-  if (lenses.length && !$('frameFocal').value) $("frameFocal").value = lenses[0].focal_length;
+  if (lenses.length && !$('frameFocal').value) $("frameFocal").value = lenses[Number($("frameLens").value)]?.focal_length || lenses[0].focal_length;
   updateFraming();
   populateFieldGear();
+}
+
+function populateSavedGearSelect(select, items, prompt, detailKey, selectedName) {
+  select.replaceChildren();
+  const first = document.createElement("option"); first.value = "";
+  first.textContent = items.length ? prompt : "Add gear in My Gear"; select.append(first);
+  items.forEach((item, index) => {
+    const option = document.createElement("option"); option.value = String(index);
+    option.textContent = detailKey === "sensor_width"
+      ? `${item.name} · ${item.sensor_width} × ${item.sensor_height} mm`
+      : `${item.name} · ${item.focal_length}${item.focal_max ? `–${item.focal_max}` : ""} mm · f/${item.f_ratio}`;
+    select.append(option);
+  });
+  const index = items.findIndex((item) => item.name === selectedName);
+  select.value = index >= 0 ? String(index) : items.length ? "0" : "";
+}
+
+function populateCatalogSelect(select, items, prompt, type) {
+  select.replaceChildren();
+  const first = document.createElement("option"); first.value = ""; first.textContent = prompt; select.append(first);
+  const featuredNames = type === "camera" ? ["Sony A7R III (A7R3 / ILCE-7RM3)"] : ["Sigma 20mm f/1.4 DG HSM Art", "Rokinon 135mm f/2 ED UMC"];
+  const featured = items.filter((item) => featuredNames.includes(item.name));
+  const rest = items.filter((item) => !featuredNames.includes(item.name)).sort((a, b) => a.name.localeCompare(b.name));
+  for (const [label, group] of [["Your gear", featured], [type === "camera" ? "Camera catalog" : "Lens and telescope catalog", rest]]) {
+    if (!group.length) continue;
+    const optgroup = document.createElement("optgroup"); optgroup.label = label;
+    for (const item of group) {
+      const index = items.indexOf(item), option = document.createElement("option"); option.value = String(index);
+      option.textContent = type === "camera"
+        ? `${item.name} · ${item.sensor_width} × ${item.sensor_height} mm`
+        : `${item.name} · ${item.focal_length}${item.focal_max ? `–${item.focal_max}` : ""} mm · f/${item.f_ratio}`;
+      optgroup.append(option);
+    }
+    select.append(optgroup);
+  }
+  const index = items.findIndex((item) => featuredNames.includes(item.name));
+  if (index >= 0) select.value = String(index);
+}
+
+function addCatalogGear(kind) {
+  const select = $(kind === "camera" ? "cameraCatalogSelect" : "lensCatalogSelect");
+  const catalog = kind === "camera" ? state.cameraCatalog : state.lensCatalog;
+  const saved = kind === "camera" ? state.prefs.cameras : state.prefs.lenses;
+  const item = select.value === "" ? null : catalog[Number(select.value)];
+  if (!item) { toast(`Choose a ${kind === "camera" ? "camera" : "lens or telescope"} first.`); return; }
+  if (saved.some((existing) => existing.name.toLocaleLowerCase() === item.name.toLocaleLowerCase())) {
+    toast(`${item.name} is already in My Gear.`); return;
+  }
+  if (saved.length >= 100) { toast(`My Gear can save up to 100 ${kind === "camera" ? "cameras" : "lenses / scopes"}.`); return; }
+  saved.push({ ...item });
+  savePreferences(); populateGear();
+  const selectId = kind === "camera" ? "frameCamera" : "frameLens";
+  const savedSelect = $(selectId);
+  savedSelect.value = String(saved.findIndex((entry) => entry.name === item.name));
+  if (kind === "lens") $("frameFocal").value = item.focal_length;
+  updateFraming(); renderSky();
+  toast(`${item.name} added to My Gear.`);
 }
 
 function renderGearList(id, items, kind) {
@@ -881,7 +1023,7 @@ function renderGearList(id, items, kind) {
     const description = document.createElement("div");
     const name = document.createElement("strong"); name.textContent = item.name;
     const details = document.createElement("span");
-    details.textContent = kind === "camera" ? `${item.sensor_width} × ${item.sensor_height} mm · ${item.pixel_size_um} μm pixels` : `${item.focal_length} mm · f/${item.f_ratio}`;
+    details.textContent = kind === "camera" ? `${item.sensor_width} × ${item.sensor_height} mm · ${item.pixel_size_um} μm pixels` : `${item.focal_length}${item.focal_max ? `–${item.focal_max}` : ""} mm · f/${item.f_ratio}`;
     description.append(name, details);
     const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-item"; remove.textContent = "×";
     remove.setAttribute("aria-label", `Remove ${item.name}`); remove.dataset.removeKind = kind; remove.dataset.removeIndex = String(index);
@@ -890,9 +1032,10 @@ function renderGearList(id, items, kind) {
 }
 
 function fillTargetOptions() {
-  const datalist = $("frameTargetOptions"); datalist.replaceChildren();
-  for (const target of state.targets) {
-    const option = document.createElement("option"); option.value = target.name; datalist.append(option);
+  const select = $("frameTargetSelect"); select.replaceChildren();
+  for (const target of [...state.targets].sort((a, b) => a.name.localeCompare(b.name))) {
+    const option = document.createElement("option"); option.value = target.name;
+    option.textContent = `${target.name} · ${target.type}`; select.append(option);
   }
 }
 
@@ -905,7 +1048,7 @@ function selectTarget(query) {
   const needle = query.trim().toLocaleLowerCase();
   let target = state.targets.find((item) => item.name.toLocaleLowerCase() === needle);
   if (!target && needle) target = state.targets.find((item) => item.name.toLocaleLowerCase().includes(needle));
-  if (target) { state.selectedTarget = target; $("frameTargetSearch").value = target.name; }
+  if (target) { state.selectedTarget = target; $("frameTargetSelect").value = target.name; }
   else if (!needle) state.selectedTarget = null;
   updateFraming();
 }
@@ -927,7 +1070,7 @@ function drawFraming() {
   const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const w = rect.width, h = rect.height, target = activeTarget();
   ctx.fillStyle = "#07121e"; ctx.fillRect(0, 0, w, h);
-  const camera = state.prefs.cameras[Number($("frameCamera").value)] || state.prefs.cameras[0];
+  const camera = $("frameCamera").value === "" ? null : state.prefs.cameras[Number($("frameCamera").value)] || null;
   const focal = finite($("frameFocal").value, 0);
   if (!target || !camera || focal <= 0) {
     ctx.fillStyle = "#9eb0bd"; ctx.font = "13px -apple-system, sans-serif"; ctx.textAlign = "center";
@@ -967,7 +1110,7 @@ function drawFraming() {
 
 function updateFraming() {
   const target = activeTarget();
-  const camera = state.prefs.cameras[Number($("frameCamera").value)] || state.prefs.cameras[0];
+  const camera = $("frameCamera").value === "" ? null : state.prefs.cameras[Number($("frameCamera").value)] || null;
   const focal = finite($("frameFocal").value, 0);
   $("frameRotationLabel").textContent = `${finite($("frameRotation").value, 0)}°`;
   $("chartTargetName").textContent = target ? target.name : "Target center";
@@ -975,6 +1118,15 @@ function updateFraming() {
     $("frameFov").textContent = `${fieldOfView(camera.sensor_width, focal).toFixed(2)}° × ${fieldOfView(camera.sensor_height, focal).toFixed(2)}°`;
   } else $("frameFov").textContent = "Add camera and focal length";
   $("frameTargetSize").textContent = target ? `${target.size_deg[0]}° × ${target.size_deg[1]}° · ${target.type}` : "Choose a catalog target";
+  const image = target ? state.targetImages[target.name] : null;
+  $("targetImageCard").hidden = !image;
+  if (image) {
+    const reference = $("targetReferenceImage");
+    if (reference.dataset.src !== image.src) { reference.src = image.src; reference.dataset.src = image.src; }
+    reference.alt = `${target.name} reference image`;
+    $("targetImageName").textContent = image.caption || `${target.name} · reference view`;
+    $("targetImageCredit").textContent = image.credit || "NASA image credit is listed in AstroApp attributions.";
+  }
   drawFraming();
 }
 
@@ -1029,11 +1181,13 @@ function saveSiteFromFields() {
 
 function addGear(kind) {
   if (kind === "camera") {
+    if (state.prefs.cameras.length >= 100) { toast("My Gear can save up to 100 cameras."); return; }
     const item = { name: $("newCameraName").value.trim(), sensor_width: finite($("newCameraWidth").value), sensor_height: finite($("newCameraHeight").value), pixel_size_um: finite($("newCameraPixel").value) };
     if (!item.name || !validCamera(item)) { toast("Enter a name and valid sensor dimensions."); return; }
     state.prefs.cameras.push(item);
     for (const id of ["newCameraName", "newCameraWidth", "newCameraHeight", "newCameraPixel"]) $(id).value = "";
   } else {
+    if (state.prefs.lenses.length >= 100) { toast("My Gear can save up to 100 lenses / scopes."); return; }
     const item = { name: $("newLensName").value.trim(), focal_length: finite($("newLensFocal").value), f_ratio: finite($("newLensRatio").value) };
     if (!item.name || !validLens(item)) { toast("Enter a name, focal length, and f-number."); return; }
     state.prefs.lenses.push(item);
@@ -1060,7 +1214,7 @@ async function importGear(file) {
     if (site && (typeof site.name !== "string" || finite(site.lat, 91) < -90 || finite(site.lat, -91) > 90 || finite(site.lon, 181) < -180 || finite(site.lon, -181) > 180)) {
       throw new Error("This file has an invalid observing site.");
     }
-    state.prefs = { cameras: incoming.cameras.slice(0, 40), lenses: incoming.lenses.slice(0, 60), site: site ? { name: site.name.slice(0, 60), lat: Number(site.lat), lon: Number(site.lon) } : state.prefs.site };
+    state.prefs = { cameras: incoming.cameras.slice(0, 100), lenses: incoming.lenses.slice(0, 100), site: site ? { name: site.name.slice(0, 60), lat: Number(site.lat), lon: Number(site.lon) } : state.prefs.site };
     if (site) state.siteConfigured = Boolean(site.name.trim() && site.name !== "Set observing site");
     state.mapPin = state.siteConfigured ? state.prefs.site : null;
     if (incoming.fieldKit && typeof incoming.fieldKit === "object") {
@@ -1206,18 +1360,15 @@ function bindEvents() {
     savePreferences(); updateSiteLabels(); renderSky(); toast("Map pin saved as your observing site.");
   });
   setupMapPointerEvents();
-  $("frameTargetSearch").addEventListener("change", (event) => selectTarget(event.currentTarget.value));
-  $("frameTargetSearch").addEventListener("input", (event) => {
-    const match = state.targets.find((item) => item.name.toLocaleLowerCase() === event.currentTarget.value.trim().toLocaleLowerCase());
-    if (match) { state.selectedTarget = match; updateFraming(); }
-  });
-  $("frameCamera").addEventListener("change", updateFraming);
+  $("frameTargetSelect").addEventListener("change", (event) => { selectTarget(event.currentTarget.value); renderSky(); });
+  $("frameCamera").addEventListener("change", () => { updateFraming(); renderSky(); });
   $("frameLens").addEventListener("change", () => {
     const lens = state.prefs.lenses[Number($("frameLens").value)];
     if (lens) $("frameFocal").value = lens.focal_length;
-    updateFraming();
+    updateFraming(); renderSky();
   });
   $("frameFocal").addEventListener("input", updateFraming);
+  $("frameFocal").addEventListener("change", renderSky);
   $("frameRotation").addEventListener("input", updateFraming);
   $("fieldCamera").addEventListener("change", updateExposureGuide);
   $("fieldLens").addEventListener("change", () => {
@@ -1243,13 +1394,15 @@ function bindEvents() {
     state.packingItems.forEach((item) => { item.checked = false; });
     renderPackingList(); saveFieldKit();
   });
-  dom.targets.addEventListener("click", (event) => {
+  for (const list of [dom.targets, $("framingTargets")]) list.addEventListener("click", (event) => {
     const row = event.target.closest("[data-target]");
-    if (row) { selectTarget(row.dataset.target); activateScreen("framing"); }
+    if (row) { selectTarget(row.dataset.target); renderSky(); activateScreen("framing"); }
   });
   $("saveSite").addEventListener("click", saveSiteFromFields);
   $("addCamera").addEventListener("click", () => addGear("camera"));
   $("addLens").addEventListener("click", () => addGear("lens"));
+  $("addCatalogCamera").addEventListener("click", () => addCatalogGear("camera"));
+  $("addCatalogLens").addEventListener("click", () => addCatalogGear("lens"));
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove-kind]"); if (!button) return;
     const kind = button.dataset.removeKind, index = Number(button.dataset.removeIndex);
@@ -1278,10 +1431,12 @@ function changeDate(days) {
 
 async function init() {
   try {
-    const [defaults, targetData, stars] = await Promise.all([
+    const [defaults, targetData, stars, equipment, imageData] = await Promise.all([
       fetch("./data/default-settings.json").then((response) => { if (!response.ok) throw new Error("Settings file unavailable"); return response.json(); }),
       fetch("./data/deep-sky-targets.json").then((response) => { if (!response.ok) throw new Error("Target catalog unavailable"); return response.json(); }),
       fetch("./data/stars-mag65.json").then((response) => { if (!response.ok) throw new Error("Star catalog unavailable"); return response.json(); }),
+      fetch("./data/equipment-catalog.json").then((response) => { if (!response.ok) throw new Error("Equipment catalog unavailable"); return response.json(); }),
+      fetch("./data/deep-sky-images.json").then((response) => { if (!response.ok) throw new Error("Image catalog unavailable"); return response.json(); }),
     ]);
     state.defaults = defaults;
     state.prefs.cameras = Array.isArray(defaults.cameras) ? defaults.cameras.filter(validCamera) : [];
@@ -1289,6 +1444,9 @@ async function init() {
     state.targets = Object.entries(targetData).filter(([, item]) => Number.isFinite(item.ra) && Number.isFinite(item.dec) && Array.isArray(item.size_deg))
       .map(([name, item]) => ({ name, ra: item.ra, dec: item.dec, size_deg: item.size_deg, type: item.type || "Deep sky object" }));
     state.stars = stars.filter((star) => Array.isArray(star) && Number.isFinite(star[1]) && Number.isFinite(star[2]));
+    state.cameraCatalog = Array.isArray(equipment.cameras) ? equipment.cameras.filter(validCamera) : [];
+    state.lensCatalog = Array.isArray(equipment.lenses) ? equipment.lenses.filter(validLens) : [];
+    state.targetImages = imageData && typeof imageData === "object" ? imageData : {};
     loadPreferences();
   } catch (error) {
     renderOfflineStatus("Local data unavailable", "error");
@@ -1299,7 +1457,7 @@ async function init() {
   updateSiteLabels();
   dom.date.value = localDateISO();
   renderZoneLegend(); fillTargetOptions(); populateGear(); renderFieldSession(); renderPackingList();
-  const initialTarget = activeTarget(); if (initialTarget) $("frameTargetSearch").value = initialTarget.name;
+  const initialTarget = activeTarget(); if (initialTarget) $("frameTargetSelect").value = initialTarget.name;
   renderSky(); bindEvents();
   const site = state.prefs.site;
   setMapArea(site.lat >= 7 && site.lat <= 75 && site.lon >= -180 && site.lon <= -51 ? "north-america" : "world", true);
