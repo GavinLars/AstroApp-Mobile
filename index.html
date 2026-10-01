@@ -125,15 +125,16 @@
         <div class="section-title"><div><p class="eyebrow">TONIGHT · YOUR GEAR · YOUR LOCATION</p><h2>Recommended targets</h2></div><span class="muted" id="framingTargetCount"></span></div>
         <p class="small-note" id="framingRecommendationContext"></p>
         <div class="target-list" id="framingTargets" aria-live="polite"></div>
-        <article class="card reference-card" id="targetImageCard" hidden>
+        <article class="card chart-card">
+          <canvas id="framingChart" aria-label="Offline camera view with the selected deep-sky target and sensor frame"></canvas>
+          <div class="chart-caption"><span id="chartTargetName">Target center</span><span>Camera field</span></div>
+        </article>
+        <details class="card reference-card" id="targetImageCard" hidden>
+          <summary>Open full reference image and credit</summary>
           <img id="targetReferenceImage" alt="">
           <div class="reference-caption"><strong id="targetImageName"></strong><span id="targetImageCredit"></span></div>
-        </article>
-        <article class="card chart-card">
-          <canvas id="framingChart" aria-label="Offline star-field chart showing the camera field of view"></canvas>
-          <div class="chart-caption"><span id="chartTargetName">Target center</span><span>North ↑</span></div>
-        </article>
-        <p class="small-note">When available, a credited image shows the target; it is not a live sky photograph or calibrated sensor preview. The star chart’s teal frame is your calculated field of view, and its gold outline shows catalog size.</p>
+        </details>
+        <p class="small-note">The teal rectangle matches your camera’s calculated field of view. Bundled target photos appear inside it using catalog size; other targets use an illustration. Tiny objects are enlarged for visibility, and photo crops vary, so treat the preview as an estimate of composition.</p>
       </section>
 
       <section class="screen" id="screen-gear" aria-labelledby="gearHeading" hidden>

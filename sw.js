@@ -1,4 +1,4 @@
-const CACHE_NAME = "astroapp-field-guide-v6";
+const CACHE_NAME = "astroapp-field-guide-v7";
 const APP_SHELL = [
   "./",
   "./index.html",

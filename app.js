@@ -974,23 +974,16 @@ function populateSavedGearSelect(select, items, prompt, detailKey, selectedName)
 function populateCatalogSelect(select, items, prompt, type) {
   select.replaceChildren();
   const first = document.createElement("option"); first.value = ""; first.textContent = prompt; select.append(first);
-  const featuredNames = type === "camera" ? ["Sony A7R III (A7R3 / ILCE-7RM3)"] : ["Sigma 20mm f/1.4 DG HSM Art", "Rokinon 135mm f/2 ED UMC"];
-  const featured = items.filter((item) => featuredNames.includes(item.name));
-  const rest = items.filter((item) => !featuredNames.includes(item.name)).sort((a, b) => a.name.localeCompare(b.name));
-  for (const [label, group] of [["Your gear", featured], [type === "camera" ? "Camera catalog" : "Lens and telescope catalog", rest]]) {
-    if (!group.length) continue;
-    const optgroup = document.createElement("optgroup"); optgroup.label = label;
-    for (const item of group) {
-      const index = items.indexOf(item), option = document.createElement("option"); option.value = String(index);
-      option.textContent = type === "camera"
-        ? `${item.name} · ${item.sensor_width} × ${item.sensor_height} mm`
-        : `${item.name} · ${item.focal_length}${item.focal_max ? `–${item.focal_max}` : ""} mm · f/${item.f_ratio}`;
-      optgroup.append(option);
-    }
-    select.append(optgroup);
-  }
-  const index = items.findIndex((item) => featuredNames.includes(item.name));
-  if (index >= 0) select.value = String(index);
+  const optgroup = document.createElement("optgroup");
+  optgroup.label = type === "camera" ? "Camera catalog" : "Lens and telescope catalog";
+  [...items].sort((a, b) => a.name.localeCompare(b.name)).forEach((item) => {
+    const index = items.indexOf(item), option = document.createElement("option"); option.value = String(index);
+    option.textContent = type === "camera"
+      ? `${item.name} · ${item.sensor_width} × ${item.sensor_height} mm`
+      : `${item.name} · ${item.focal_length}${item.focal_max ? `–${item.focal_max}` : ""} mm · f/${item.f_ratio}`;
+    optgroup.append(option);
+  });
+  select.append(optgroup);
 }
 
 function addCatalogGear(kind) {
@@ -1062,6 +1055,67 @@ function colorForStar(colorIndex) {
   return `rgb(${red},${green},${blue})`;
 }
 
+function targetVisualSeed(name) {
+  let seed = 2166136261;
+  for (const char of name) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+  return () => {
+    seed += 0x6D2B79F5;
+    let value = seed;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function drawCatalogTarget(ctx, target, width, height) {
+  const random = targetVisualSeed(target.name);
+  const type = target.type.toLocaleLowerCase();
+  ctx.save(); ctx.globalCompositeOperation = "screen";
+  if (type.includes("galaxy")) {
+    const radius = Math.max(width, height) * .62;
+    const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+    glow.addColorStop(0, "rgba(255,225,174,.95)"); glow.addColorStop(.13, "rgba(255,174,115,.77)");
+    glow.addColorStop(.42, "rgba(128,178,255,.42)"); glow.addColorStop(1, "rgba(62,106,173,0)");
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.ellipse(0, 0, width * .6, height * .6, -.22, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(168,204,255,.45)"; ctx.lineWidth = Math.max(1, Math.min(width, height) * .035);
+    for (const direction of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(width * .22, direction * height * .08, width * .36, direction * height * .46, -width * .42, direction * height * .35);
+      ctx.stroke();
+    }
+  } else if (type.includes("cluster")) {
+    const count = type.includes("globular") ? 54 : 28;
+    for (let i = 0; i < count; i++) {
+      const radius = Math.sqrt(random()) * .48, angle = random() * Math.PI * 2;
+      const x = Math.cos(angle) * radius * width, y = Math.sin(angle) * radius * height;
+      const size = .65 + random() * 1.5;
+      ctx.fillStyle = random() > .72 ? "#ffd7a0" : "#d8e8ff";
+      ctx.globalAlpha = .45 + random() * .5; ctx.beginPath(); ctx.arc(x, y, size, 0, Math.PI * 2); ctx.fill();
+    }
+    const core = ctx.createRadialGradient(0, 0, 0, 0, 0, Math.max(width, height) * .35);
+    core.addColorStop(0, "rgba(255,232,190,.62)"); core.addColorStop(1, "rgba(255,232,190,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = core; ctx.beginPath(); ctx.arc(0, 0, Math.max(width, height) * .35, 0, Math.PI * 2); ctx.fill();
+  } else if (type.includes("planetary")) {
+    const radius = Math.max(width, height) * .42;
+    const shell = ctx.createRadialGradient(0, 0, radius * .38, 0, 0, radius);
+    shell.addColorStop(0, "rgba(4,12,20,0)"); shell.addColorStop(.46, "rgba(108,233,221,.12)");
+    shell.addColorStop(.72, "rgba(127,238,220,.9)"); shell.addColorStop(1, "rgba(102,154,255,0)");
+    ctx.fillStyle = shell; ctx.beginPath(); ctx.ellipse(0, 0, width * .47, height * .47, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(255,224,174,.9)"; ctx.beginPath(); ctx.arc(0, 0, 1.4, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const radius = Math.max(width, height) * .72;
+    for (let i = 0; i < 7; i++) {
+      const x = (random() - .5) * width * .7, y = (random() - .5) * height * .7;
+      const r = radius * (.32 + random() * .3);
+      const cloud = ctx.createRadialGradient(x, y, 0, x, y, r);
+      cloud.addColorStop(0, i % 2 ? "rgba(255,179,127,.48)" : "rgba(130,197,255,.46)");
+      cloud.addColorStop(1, "rgba(74,132,214,0)");
+      ctx.fillStyle = cloud; ctx.beginPath(); ctx.ellipse(x, y, r, r * (.58 + random() * .42), random() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 function drawFraming() {
   const canvas = dom.frameCanvas, rect = canvas.getBoundingClientRect();
   if (rect.width < 2) return;
@@ -1077,10 +1131,18 @@ function drawFraming() {
     ctx.fillText(!camera ? "Add a camera in My Gear to see framing" : "Choose a target and focal length", w / 2, h / 2); return;
   }
   const fovX = fieldOfView(camera.sensor_width, focal), fovY = fieldOfView(camera.sensor_height, focal);
-  const margin = 22, plotW = w - margin * 2, plotH = h - margin * 2;
+  const margin = 16, scale = Math.min((w - margin * 2) / fovX, (h - margin * 2) / fovY);
+  const frameW = fovX * scale, frameH = fovY * scale;
   const centerX = w / 2, centerY = h / 2, rotation = radians(finite($("frameRotation").value, 0));
+  const frame = { x: centerX - frameW / 2, y: centerY - frameH / 2, width: frameW, height: frameH };
+  ctx.fillStyle = "#02070d"; ctx.fillRect(frame.x, frame.y, frame.width, frame.height);
+  ctx.save(); ctx.beginPath(); ctx.rect(frame.x, frame.y, frame.width, frame.height); ctx.clip();
   ctx.strokeStyle = "rgba(128,224,210,.12)"; ctx.lineWidth = 1;
-  for (let i = 1; i < 4; i++) { ctx.beginPath(); ctx.moveTo(margin + plotW * i / 4, margin); ctx.lineTo(margin + plotW * i / 4, h - margin); ctx.stroke(); ctx.beginPath(); ctx.moveTo(margin, margin + plotH * i / 4); ctx.lineTo(w - margin, margin + plotH * i / 4); ctx.stroke(); }
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath(); ctx.moveTo(frame.x + frame.width * i / 4, frame.y); ctx.lineTo(frame.x + frame.width * i / 4, frame.y + frame.height); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(frame.x, frame.y + frame.height * i / 4); ctx.lineTo(frame.x + frame.width, frame.y + frame.height * i / 4); ctx.stroke();
+  }
+  ctx.translate(centerX, centerY); ctx.rotate(-rotation); ctx.translate(-centerX, -centerY);
   const ra0 = radians(target.ra), dec0 = radians(target.dec);
   for (const star of state.stars) {
     const ra = radians(star[1]), dec = radians(star[2]), dra = ra - ra0;
@@ -1090,22 +1152,31 @@ function drawFraming() {
     const tangentY = (Math.cos(dec0) * Math.sin(dec) - Math.sin(dec0) * Math.cos(dec) * Math.cos(dra)) / cosc;
     const sx = degrees(tangentX), sy = degrees(tangentY);
     if (Math.abs(sx) > fovX * .65 || Math.abs(sy) > fovY * .65) continue;
-    const px = centerX + sx / fovX * plotW, py = centerY - sy / fovY * plotH;
+    const px = centerX + sx * scale, py = centerY - sy * scale;
     const mag = finite(star[3], 6.5), radius = clamp(2.1 - (mag + .5) * .24, .55, 2.1);
     ctx.beginPath(); ctx.fillStyle = colorForStar(star[4]); ctx.globalAlpha = clamp(1.15 - mag / 9, .35, .92);
     ctx.arc(px, py, radius, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
-  ctx.save(); ctx.translate(centerX, centerY); ctx.rotate(-rotation);
-  ctx.strokeStyle = "#80e0d2"; ctx.lineWidth = 2; ctx.setLineDash([7, 4]);
-  ctx.strokeRect(-plotW / 2, -plotH / 2, plotW, plotH); ctx.setLineDash([]);
+  const width = Math.max(6, finite(target.size_deg?.[0], .2) * scale);
+  const height = Math.max(6, finite(target.size_deg?.[1], .2) * scale);
+  const source = state.targetImages[target.name];
+  const reference = $("targetReferenceImage");
+  if (source && reference.complete && reference.naturalWidth && reference.dataset.src === source.src) {
+    const imageAspect = reference.naturalWidth / reference.naturalHeight;
+    const boxAspect = width / height;
+    let imageWidth = width, imageHeight = height;
+    if (imageAspect > boxAspect) imageWidth = height * imageAspect;
+    else imageHeight = width / imageAspect;
+    ctx.globalCompositeOperation = "screen";
+    ctx.drawImage(reference, centerX - imageWidth / 2, centerY - imageHeight / 2, imageWidth, imageHeight);
+    ctx.globalCompositeOperation = "source-over";
+  } else drawCatalogTarget(ctx, target, width, height);
   ctx.restore();
-  const sizeX = clamp((target.size_deg?.[0] || .2) / fovX * plotW, 5, plotW * .9);
-  const sizeY = clamp((target.size_deg?.[1] || .2) / fovY * plotH, 5, plotH * .9);
-  ctx.strokeStyle = "#ffd991"; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.ellipse(centerX, centerY, sizeX / 2, sizeY / 2, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(centerX - 7, centerY); ctx.lineTo(centerX + 7, centerY); ctx.moveTo(centerX, centerY - 7); ctx.lineTo(centerX, centerY + 7); ctx.stroke();
-  ctx.fillStyle = "#9eb0bd"; ctx.font = "10px -apple-system, sans-serif"; ctx.textAlign = "center"; ctx.fillText("N", centerX, 13);
+  ctx.strokeStyle = "#80e0d2"; ctx.lineWidth = 2;
+  ctx.strokeRect(frame.x, frame.y, frame.width, frame.height);
+  ctx.fillStyle = "#9eb0bd"; ctx.font = "10px -apple-system, sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("CAMERA VIEW", centerX, Math.max(12, frame.y - 5));
 }
 
 function updateFraming() {
@@ -1122,7 +1193,11 @@ function updateFraming() {
   $("targetImageCard").hidden = !image;
   if (image) {
     const reference = $("targetReferenceImage");
-    if (reference.dataset.src !== image.src) { reference.src = image.src; reference.dataset.src = image.src; }
+    if (reference.dataset.src !== image.src) {
+      reference.dataset.src = image.src;
+      reference.onload = () => { if (reference.dataset.src === image.src) drawFraming(); };
+      reference.src = image.src;
+    }
     reference.alt = `${target.name} reference image`;
     $("targetImageName").textContent = image.caption || `${target.name} · reference view`;
     $("targetImageCredit").textContent = image.credit || "NASA image credit is listed in AstroApp attributions.";

@@ -6,16 +6,14 @@ Maps, sky calculations, catalogs, code, and saved gear work locally after the
 first setup.
 
 Sky Tonight shows the portions of astronomical night when the Moon is also
-below the horizon. Its target picks use your saved location, selected camera
-and optic, target size, and Moon conditions. Framing includes a scrollable
-target picker, reference images for 12 popular objects, and the calculated
-camera field of view over a local star chart. The recommendation list explains
-how well each target fits and when it is highest.
+below the horizon. Target picks use the saved observing site, selected gear,
+target size, and Moon conditions. Framing places the selected target inside a
+camera-shaped view calculated from the chosen sensor and focal length. Twelve
+targets have bundled photo references; other objects use a type-based
+illustration. My Gear has dropdown catalogs of 100 cameras and 100 optics.
+The catalog pickers open with no gear selected, and each person adds their own
+equipment from the list or manually.
 
-My Gear includes dropdown catalogs of 100 cameras and 100 lenses or telescopes,
-including the Sony A7R III, Sigma 20mm f/1.4 DG HSM Art, and Rokinon 135mm f/2
-ED UMC. You can still add equipment manually. Your saved site and gear stay on
-the phone.
 Light Pollution now supports 256× zoom in the world and North America views
 using offline atlas tiles. Readings sample the atlas's boundary-free data
 layers and report grid spacing: 1/40° worldwide and 1/120° in North America.
@@ -24,10 +22,6 @@ An observing site can be entered manually; GPS is optional. Export Backup saves
 the observing site, gear, Field Kit session, and packing-list changes to a JSON
 file that can be imported on another device. Treat that backup as personal data
 because it includes your saved coordinates.
-
-Target images are credited reference views. Some are close-ups rather than the
-full object and none are calibrated survey frames. The star chart's target
-outline and field-of-view frame use the app's local target and star catalogs.
 
 ## Install on iPhone
 

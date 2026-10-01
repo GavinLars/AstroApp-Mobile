@@ -50,9 +50,9 @@ and sensor dimensions; it is an estimate for planning, and can differ slightly
 from a maker's stated effective pixel pitch. Dedicated astronomy camera values
 use their manufacturers' published sensor dimensions and pixel pitch. Zoom
 lenses use their wide-end focal length as the initial setting; focal length can
-be adjusted in the app. Your Sony A7R III, Sigma 20mm f/1.4 DG HSM Art, and
-Rokinon 135mm f/2 ED UMC are included in the catalog. Gear saved to My Gear
-remains in the browser on the user's phone.
+be adjusted in the app. The catalog dropdown starts unselected; people choose
+the equipment they own. Gear saved to My Gear remains in the browser on that
+device.
 
 - Source database: <https://github.com/openMVG/CameraSensorSizeDatabase>
 - Camera sensor source CSV: `data/camera-sensors-source.csv`
