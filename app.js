@@ -1042,7 +1042,13 @@ function selectTarget(query) {
   const needle = query.trim().toLocaleLowerCase();
   let target = state.targets.find((item) => item.name.toLocaleLowerCase() === needle);
   if (!target && needle) target = state.targets.find((item) => item.name.toLocaleLowerCase().includes(needle));
-  if (target) { state.selectedTarget = target; $("frameTargetSelect").value = target.name; }
+  if (target) {
+    state.selectedTarget = target;
+    $("frameTargetSelect").value = target.name;
+    state.framePreviewMode = "detail";
+    $("frameTargetMode").setAttribute("aria-pressed", "true");
+    $("frameCameraMode").setAttribute("aria-pressed", "false");
+  }
   else if (!needle) state.selectedTarget = null;
   updateFraming();
 }
@@ -1136,21 +1142,24 @@ function drawFraming() {
   ctx.fillStyle = "#07121e"; ctx.fillRect(0, 0, w, h);
   const camera = $("frameCamera").value === "" ? null : state.prefs.cameras[Number($("frameCamera").value)] || null;
   const focal = finite($("frameFocal").value, 0);
-  if (!target || !camera || focal <= 0) {
+  if (!target) {
     ctx.fillStyle = "#9eb0bd"; ctx.font = "13px -apple-system, sans-serif"; ctx.textAlign = "center";
-    $("frameModeHint").textContent = !camera ? "Add a camera and lens in My Gear to draw the sensor field." : "Choose a target to see its framing.";
-    $("framingVisualLabel").textContent = target ? `${target.type} preview` : "Object preview";
-    ctx.fillText(!camera ? "Add a camera in My Gear to see framing" : "Choose a target and focal length", w / 2, h / 2); return;
+    $("frameModeHint").textContent = "Choose a target to see its framing.";
+    $("framingVisualLabel").textContent = "Object preview";
+    ctx.fillText("Choose a target to see its framing", w / 2, h / 2); return;
   }
-  const fovX = fieldOfView(camera.sensor_width, focal), fovY = fieldOfView(camera.sensor_height, focal);
+  const hasCamera = Boolean(camera && focal > 0);
+  const showCameraField = hasCamera && state.framePreviewMode === "camera";
+  const fovX = hasCamera ? fieldOfView(camera.sensor_width, focal) : 0;
+  const fovY = hasCamera ? fieldOfView(camera.sensor_height, focal) : 0;
   const margin = 16, plot = { x: margin, y: margin, width: w - margin * 2, height: h - margin * 2 };
   const targetWidth = Math.max(.01, finite(target.size_deg?.[0], .2));
   const targetHeight = Math.max(.01, finite(target.size_deg?.[1], .2));
-  const scale = state.framePreviewMode === "detail"
-    ? Math.min(plot.width * .42 / targetWidth, plot.height * .42 / targetHeight)
-    : Math.min(plot.width / (fovX * 1.5), plot.height / (fovY * 1.5));
+  const scale = showCameraField
+    ? Math.min(plot.width / (fovX * 1.5), plot.height / (fovY * 1.5))
+    : Math.min(plot.width * .42 / targetWidth, plot.height * .42 / targetHeight);
   const sceneFovX = plot.width / scale, sceneFovY = plot.height / scale;
-  const frameW = fovX * scale, frameH = fovY * scale;
+  const frameW = hasCamera ? fovX * scale : 0, frameH = hasCamera ? fovY * scale : 0;
   const centerX = w / 2, centerY = h / 2, rotation = radians(finite($("frameRotation").value, 0));
   const frame = { x: centerX - frameW / 2, y: centerY - frameH / 2, width: frameW, height: frameH };
   ctx.fillStyle = "#02070d"; ctx.fillRect(plot.x, plot.y, plot.width, plot.height);
@@ -1189,21 +1198,30 @@ function drawFraming() {
     ctx.globalCompositeOperation = "screen";
     ctx.drawImage(reference, centerX - imageWidth / 2, centerY - imageHeight / 2, imageWidth, imageHeight);
     ctx.globalCompositeOperation = "source-over";
-  } else drawCatalogTarget(ctx, target, width, height);
-  ctx.restore();
-  ctx.save(); ctx.beginPath(); ctx.rect(plot.x, plot.y, plot.width, plot.height); ctx.clip();
-  ctx.strokeStyle = "#80e0d2"; ctx.lineWidth = 2;
-  ctx.setLineDash(state.framePreviewMode === "detail" ? [6, 4] : []);
-  ctx.strokeRect(frame.x, frame.y, frame.width, frame.height);
-  const sensorFits = frame.width <= plot.width && frame.height <= plot.height;
-  if (!sensorFits && state.framePreviewMode === "detail") {
-    ctx.setLineDash([2, 5]); ctx.lineWidth = 1.5;
-    ctx.strokeRect(plot.x, plot.y, plot.width, plot.height);
+  } else {
+    ctx.save(); ctx.translate(centerX, centerY);
+    drawCatalogTarget(ctx, target, width, height);
+    ctx.restore();
   }
-  ctx.setLineDash([]); ctx.restore();
+  ctx.restore();
+  let sensorFits = false;
+  if (hasCamera) {
+    ctx.save(); ctx.beginPath(); ctx.rect(plot.x, plot.y, plot.width, plot.height); ctx.clip();
+    ctx.strokeStyle = "#80e0d2"; ctx.lineWidth = 2;
+    ctx.setLineDash(showCameraField ? [] : [6, 4]);
+    ctx.strokeRect(frame.x, frame.y, frame.width, frame.height);
+    sensorFits = frame.width <= plot.width && frame.height <= plot.height;
+    if (!sensorFits && !showCameraField) {
+      ctx.setLineDash([2, 5]); ctx.lineWidth = 1.5;
+      ctx.strokeRect(plot.x, plot.y, plot.width, plot.height);
+    }
+    ctx.setLineDash([]); ctx.restore();
+  }
   ctx.fillStyle = "#9eb0bd"; ctx.font = "10px -apple-system, sans-serif"; ctx.textAlign = "center";
-  ctx.fillText(state.framePreviewMode === "detail" ? "TARGET DETAIL" : "1.5× CAMERA FIELD", centerX, Math.max(12, plot.y - 5));
-  $("frameModeHint").textContent = state.framePreviewMode === "camera"
+  ctx.fillText(showCameraField ? "1.5× CAMERA FIELD" : "TARGET DETAIL", centerX, Math.max(12, plot.y - 5));
+  $("frameModeHint").textContent = !hasCamera
+    ? "Target detail · add a camera and focal length to overlay your camera field."
+    : showCameraField
     ? "Full sensor field · target and stars are shown at catalog scale."
     : sensorFits ? "Target detail · dashed teal box shows the complete camera field."
       : "Target detail · camera field extends beyond this zoomed view.";
